@@ -406,14 +406,16 @@ with col_pain:
         falec = pessoa.get("falecimento","")
         fotos = pessoa.get("fotos",[])
 
+        linha_nasc  = f"📅 {nasc}<br>" if nasc else ""
+        linha_falec = f"✝️ {falec}<br>" if falec else ""
+        linha_fotos = f"📷 {len(fotos)} foto{'s' if len(fotos)!=1 else ''}" if fotos else "Sem fotos ainda"
+
         st.markdown(f"""
         <div class="detalhe-panel">
             <div class="detalhe-nome">{nome}</div>
             <div class="detalhe-rel">{rel}</div>
             <div style="font-size:.82rem;color:rgba(255,255,255,.45);line-height:1.9;">
-                {"📅 " + nasc + "<br>" if nasc else ""}
-                {"✝️ " + falec + "<br>" if falec else ""}
-                {"📷 " + str(len(fotos)) + " foto" + ("s" if len(fotos)!=1 else "") if fotos else "Sem fotos ainda"}
+                {linha_nasc}{linha_falec}{linha_fotos}
             </div>
         </div>
         """, unsafe_allow_html=True)
