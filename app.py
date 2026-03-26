@@ -132,47 +132,136 @@ def _get_ws():
         ws.update("A2", [["raizes", "{}"]])
         return ws
 
+# Colunas da aba Pessoas
+_COLS_P = ["id","nome","relacao","genero","nascimento","falecimento",
+           "foto_perfil","conjuge_id","conjuge_nome","pai_id","pai_nome",
+           "mae_id","mae_nome","foto_ids"]
+
+# Colunas da aba Fotos
+_COLS_F = ["id","titulo","data","antiga","restaurada","pessoas_ids","pessoas_nomes"]
+
+def _get_aba(sh, nome, cabecalho):
+    """Retorna aba existente ou cria nova com cabeçalho."""
+    try:
+        return sh.worksheet(nome)
+    except:
+        ws = sh.add_worksheet(nome, rows=200, cols=len(cabecalho))
+        ws.append_row(cabecalho)
+        return ws
+
+def _get_planilha():
+    url_cfg = _s("PLANILHA_URL_RAIZES") or _s("PLANILHA_URL")
+    gc      = _gc()
+    key     = _extrair_key(url_cfg)
+    try:
+        return gc.open_by_key(key)
+    except Exception as e:
+        raise RuntimeError(
+            f"Erro ao abrir planilha (key={key!r}). "
+            f"Compartilhe com a conta de servico. Detalhe: {e}"
+        )
+
 def _carregar():
     try:
-        ws   = _get_ws()
-        rows = ws.get_all_values()
-        raw  = "{}"
-        for row in rows:
-            if row and row[0] == "raizes":
-                raw = row[1] if len(row) > 1 else "{}"
-                break
-        d      = json.loads(raw) if raw.strip() else {}
-        arvore = d.get("arvore", [])
-        acervo = d.get("acervo", d.get("galeria", []))
-        for p in arvore:
-            p.setdefault("foto_ids",    [])
-            p.setdefault("conjuge_id",  "")
-            p.setdefault("pai_id",      "")
-            p.setdefault("mae_id",      "")
-        for f in acervo:
-            f.setdefault("pessoas", [])
-            if "id" not in f:
-                f["id"] = "f" + str(int(time.time()*1000))
+        sh      = _get_planilha()
+        ws_p    = _get_aba(sh, "Pessoas",  _COLS_P)
+        ws_f    = _get_aba(sh, "Fotos",    _COLS_F)
+
+        # --- Pessoas ---
+        rows_p  = ws_p.get_all_records(expected_headers=_COLS_P)
+        arvore  = []
+        for r in rows_p:
+            if not r.get("id") or not r.get("nome"): continue
+            p = {
+                "id":          str(r.get("id","")),
+                "nome":        str(r.get("nome","")),
+                "relacao":     str(r.get("relacao","")),
+                "genero":      str(r.get("genero","")),
+                "nascimento":  str(r.get("nascimento","")),
+                "falecimento": str(r.get("falecimento","")),
+                "foto_perfil": str(r.get("foto_perfil","")),
+                "conjuge_id":  str(r.get("conjuge_id","")),
+                "pai_id":      str(r.get("pai_id","")),
+                "mae_id":      str(r.get("mae_id","")),
+                "foto_ids":    [],
+            }
+            arvore.append(p)
+
+        # --- Fotos ---
+        rows_f  = ws_f.get_all_records(expected_headers=_COLS_F)
+        acervo  = []
+        for r in rows_f:
+            if not r.get("id") or not r.get("antiga"): continue
+            ids_str = str(r.get("pessoas_ids",""))
+            pessoas = [x.strip() for x in ids_str.split(",") if x.strip()]
+            f = {
+                "id":          str(r.get("id","")),
+                "titulo":      str(r.get("titulo","")),
+                "data":        str(r.get("data","")),
+                "antiga":      str(r.get("antiga","")),
+                "restaurada":  str(r.get("restaurada","")),
+                "pessoas":     pessoas,
+            }
+            acervo.append(f)
+
         return arvore, acervo
     except Exception as e:
         st.error("Erro ao carregar: " + str(e))
         return [], []
 
+def _nome_da_pessoa(pid, arvore):
+    p = next((x for x in arvore if x["id"]==pid), None)
+    return p["nome"] if p else ""
+
 def _salvar(arvore, acervo):
     try:
-        ws      = _get_ws()
-        payload = json.dumps({"arvore": arvore, "acervo": acervo}, ensure_ascii=False)
-        rows    = ws.get_all_values()
-        linha   = None
-        for i, row in enumerate(rows, start=1):
-            if row and row[0] == "raizes":
-                linha = i
-                break
-        if linha:
-            ws.update(f"B{linha}", [[payload]])
-        else:
-            ws.append_row(["raizes", payload])
+        sh   = _get_planilha()
+        ws_p = _get_aba(sh, "Pessoas", _COLS_P)
+        ws_f = _get_aba(sh, "Fotos",   _COLS_F)
+
+        # --- Escreve Pessoas ---
+        rows_p = [_COLS_P]  # cabeçalho
+        for p in arvore:
+            rows_p.append([
+                p.get("id",""),
+                p.get("nome",""),
+                p.get("relacao",""),
+                p.get("genero",""),
+                p.get("nascimento",""),
+                p.get("falecimento",""),
+                p.get("foto_perfil",""),
+                p.get("conjuge_id",""),
+                _nome_da_pessoa(p.get("conjuge_id",""), arvore),
+                p.get("pai_id",""),
+                _nome_da_pessoa(p.get("pai_id",""), arvore),
+                p.get("mae_id",""),
+                _nome_da_pessoa(p.get("mae_id",""), arvore),
+                ",".join(p.get("foto_ids",[])),
+            ])
+        ws_p.clear()
+        ws_p.update("A1", rows_p)
+
+        # --- Escreve Fotos ---
+        rows_f = [_COLS_F]  # cabeçalho
+        for f in acervo:
+            ids_str   = ",".join(f.get("pessoas",[]))
+            nomes_str = ",".join(_nome_da_pessoa(pid, arvore) for pid in f.get("pessoas",[]))
+            rows_f.append([
+                f.get("id",""),
+                f.get("titulo",""),
+                f.get("data",""),
+                f.get("antiga",""),
+                f.get("restaurada",""),
+                ids_str,
+                nomes_str,
+            ])
+        ws_f.clear()
+        ws_f.update("A1", rows_f)
+
         return True
+    except Exception as e:
+        st.error("Erro ao salvar: " + str(e))
+        return False
     except Exception as e:
         st.error("Erro ao salvar: " + str(e))
         return False
@@ -295,8 +384,9 @@ with tab_debug:
 
         if st.button("🔌 Testar conexão agora", use_container_width=True):
             try:
-                ws = _get_ws()
-                st.success(f"✅ Conectado! Aba: {ws.title}")
+                sh = _get_planilha()
+                abas = [w.title for w in sh.worksheets()]
+                st.success(f"✅ Conectado! Abas: {abas}")
             except Exception as e:
                 st.error(f"❌ Falha na conexão: {e}")
                 st.markdown("""
