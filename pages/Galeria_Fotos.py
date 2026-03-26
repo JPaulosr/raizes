@@ -348,71 +348,132 @@ function setModo(modo) {{
 if st.session_state.crop_pid:
     pessoa_crop = next((p for p in arv() if p["id"]==st.session_state.crop_pid), None)
     if pessoa_crop:
-        st.markdown(f"### ✂️ Recortar foto de perfil — {pessoa_crop['nome'].split()[0]}")
-        st.caption("Faça upload de uma foto, arraste para selecionar o rosto e clique em Recortar & Salvar.")
+        nome_c = pessoa_crop["nome"].split()[0]
+        st.markdown(f"### ✂️ Definir foto de perfil — {nome_c}")
 
-        crop_file = st.file_uploader("Envie a foto", type=["jpg","jpeg","png","webp"], key="crop_file")
+        # Fotos do acervo onde esta pessoa aparece
+        fotos_da_pessoa = [f for f in acv() if pessoa_crop["id"] in f.get("pessoas",[])]
 
-        if crop_file:
-            img_bytes = crop_file.read()
-            img_b64   = base64.b64encode(img_bytes).decode()
-            img_ext   = crop_file.name.rsplit(".",1)[-1].lower()
-            mime      = "image/png" if img_ext=="png" else "image/jpeg"
+        # Selecionar qual foto usar como base
+        if fotos_da_pessoa:
+            st.markdown("**Escolha uma foto do acervo para recortar o rosto:**")
+            opcoes_foto = {"(nenhuma — enviar do computador)": None}
+            for f in fotos_da_pessoa:
+                tit = f.get("titulo","") or "Sem título"
+                opcoes_foto[f"📷 {tit} ({f.get('data','')})"] = f
+            escolha_label = st.selectbox("Foto do acervo", list(opcoes_foto.keys()), key="crop_escolha")
+            foto_escolhida = opcoes_foto[escolha_label]
+        else:
+            st.caption(f"{nome_c} ainda não tem fotos no acervo. Envie uma abaixo.")
+            foto_escolhida = None
 
-            st.markdown("**1. Arraste para selecionar o rosto → clique Recortar**")
+        # Determina a URL base para recorte
+        url_para_recortar = None
+        if foto_escolhida:
+            lado = st.radio("Qual versão usar?", ["Restaurada ✨","Antiga 🕰️"], horizontal=True, key="crop_lado")
+            url_para_recortar = foto_escolhida["restaurada"] if "Restaurada" in lado else foto_escolhida["antiga"]
+
+        # Também pode enviar foto do computador
+        if not foto_escolhida or st.checkbox("Ou enviar uma foto diferente do computador", key="crop_upload_check"):
+            crop_file = st.file_uploader("Foto do computador", type=["jpg","jpeg","png","webp"], key="crop_file_up")
+            if crop_file:
+                img_bytes = crop_file.read()
+                url_para_recortar = "data:image/jpeg;base64," + base64.b64encode(img_bytes).decode()
+
+        # Renderiza o canvas de recorte
+        if url_para_recortar:
+            st.markdown("**Arraste para selecionar o rosto → clique Recortar:**")
+
+            # Se for URL do Cloudinary, carrega via JS diretamente (sem precisar de base64)
+            is_external = url_para_recortar.startswith("http")
+            img_src = url_para_recortar
+
             components.html(f"""
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
 *{{margin:0;padding:0;box-sizing:border-box;}}
 body{{background:#111;padding:10px;font-family:sans-serif;color:#fff;}}
 #wrap{{position:relative;display:inline-block;max-width:100%;}}
-#src{{max-width:100%;max-height:380px;display:block;cursor:crosshair;user-select:none;border-radius:8px;}}
+#src{{max-width:100%;max-height:420px;display:block;cursor:crosshair;user-select:none;border-radius:8px;}}
 #sel{{position:absolute;border:2px dashed #6ee8aa;background:rgba(110,232,170,.15);pointer-events:none;display:none;border-radius:4px;}}
 canvas{{display:none;}}
-.row{{display:flex;align-items:center;gap:12px;margin-top:10px;}}
+.row{{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;}}
 .btn{{background:#6ee8aa;color:#0a2a1a;border:none;border-radius:8px;padding:8px 18px;font-size:.85rem;font-weight:700;cursor:pointer;}}
 .hint{{font-size:.75rem;color:rgba(255,255,255,.4);}}
 #pw{{display:none;align-items:center;gap:10px;margin-top:8px;}}
-#preview{{width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid #6ee8aa;}}
-#b64area{{width:100%;height:55px;font-size:.58rem;background:#1a1a2e;color:#6ee8aa;border:1px solid #6ee8aa;border-radius:6px;padding:6px;resize:none;margin-top:8px;display:none;}}
+#preview{{width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #6ee8aa;}}
+#b64area{{width:100%;height:55px;font-size:.58rem;background:#1a1a2e;color:#6ee8aa;border:1px solid rgba(110,232,170,.5);border-radius:6px;padding:6px;resize:none;margin-top:8px;display:none;}}
+#err{{color:#f38ba8;font-size:.78rem;margin-top:6px;display:none;}}
 </style></head><body>
-<div id="wrap"><img id="src" src="data:{mime};base64,{img_b64}" draggable="false"><div id="sel"></div></div>
+<div id="wrap">
+  <img id="src" crossorigin="anonymous" draggable="false">
+  <div id="sel"></div>
+</div>
 <canvas id="cv"></canvas>
 <div class="row">
-  <button class="btn" onclick="recortar()">✂️ Recortar</button>
+  <button class="btn" onclick="recortar()">✂️ Recortar rosto</button>
   <span class="hint" id="hint">Arraste para marcar o rosto</span>
 </div>
-<div id="pw"><img id="preview"><span style="font-size:.8rem;color:#6ee8aa">✅ Pronto! Copie o texto abaixo (Ctrl+A, Ctrl+C)</span></div>
+<div id="err">⚠️ Não foi possível recortar desta URL (CORS). Use a opção de enviar do computador.</div>
+<div id="pw"><img id="preview"><span style="font-size:.8rem;color:#6ee8aa;margin-left:8px;">✅ Copie o texto abaixo (Ctrl+A → Ctrl+C)</span></div>
 <textarea id="b64area" readonly onclick="this.select()"></textarea>
 <script>
-const img=document.getElementById("src"),sel=document.getElementById("sel");
+const img = document.getElementById("src");
+const sel = document.getElementById("sel");
 let sx=0,sy=0,ex=0,ey=0,drag=false;
-img.addEventListener("mousedown",e=>{{const r=img.getBoundingClientRect();sx=e.clientX-r.left;sy=e.clientY-r.top;drag=true;sel.style.display="block";sel.style.left=sx+"px";sel.style.top=sy+"px";sel.style.width="0";sel.style.height="0";}});
-document.addEventListener("mousemove",e=>{{if(!drag)return;const r=img.getBoundingClientRect();ex=Math.min(Math.max(e.clientX-r.left,0),img.width);ey=Math.min(Math.max(e.clientY-r.top,0),img.height);sel.style.left=Math.min(sx,ex)+"px";sel.style.top=Math.min(sy,ey)+"px";sel.style.width=Math.abs(ex-sx)+"px";sel.style.height=Math.abs(ey-sy)+"px";}});
-document.addEventListener("mouseup",()=>{{drag=false;}});
-function recortar(){{
-  const cv=document.getElementById("cv");
-  const scaleX=img.naturalWidth/img.width,scaleY=img.naturalHeight/img.height;
-  const x=Math.min(sx,ex)*scaleX,y=Math.min(sy,ey)*scaleY,w=Math.abs(ex-sx)*scaleX,h=Math.abs(ey-sy)*scaleY;
-  if(w<5||h<5){{document.getElementById("hint").textContent="⚠️ Selecione uma área primeiro!";return;}}
-  cv.width=200;cv.height=200;
-  const ctx=cv.getContext("2d");
-  ctx.beginPath();ctx.arc(100,100,100,0,Math.PI*2);ctx.clip();
-  ctx.drawImage(img,x,y,w,h,0,0,200,200);
-  const d=cv.toDataURL("image/jpeg",0.9);
-  document.getElementById("preview").src=d;
-  document.getElementById("pw").style.display="flex";
-  const ta=document.getElementById("b64area");
-  ta.style.display="block";ta.value=d;
-  setTimeout(()=>{{ta.select();ta.setSelectionRange(0,99999);}},100);
-  document.getElementById("hint").textContent="✅ Texto selecionado — pressione Ctrl+C para copiar!";
+
+// Carrega imagem
+img.onload = () => {{ document.getElementById("hint").textContent = "Imagem carregada! Arraste para marcar o rosto."; }};
+img.onerror = () => {{ document.getElementById("err").style.display="block"; }};
+img.src = "{img_src}";
+
+img.addEventListener("mousedown",e=>{{
+  const r=img.getBoundingClientRect();
+  sx=e.clientX-r.left; sy=e.clientY-r.top; drag=true;
+  sel.style.display="block";
+  sel.style.left=sx+"px"; sel.style.top=sy+"px";
+  sel.style.width="0"; sel.style.height="0";
+}});
+document.addEventListener("mousemove",e=>{{
+  if(!drag) return;
+  const r=img.getBoundingClientRect();
+  ex=Math.min(Math.max(e.clientX-r.left,0),img.width);
+  ey=Math.min(Math.max(e.clientY-r.top,0),img.height);
+  sel.style.left=Math.min(sx,ex)+"px"; sel.style.top=Math.min(sy,ey)+"px";
+  sel.style.width=Math.abs(ex-sx)+"px"; sel.style.height=Math.abs(ey-sy)+"px";
+}});
+document.addEventListener("mouseup",()=>{{ drag=false; }});
+
+function recortar() {{
+  const cv = document.getElementById("cv");
+  try {{
+    const scaleX=img.naturalWidth/img.width, scaleY=img.naturalHeight/img.height;
+    const x=Math.min(sx,ex)*scaleX, y=Math.min(sy,ey)*scaleY;
+    const w=Math.abs(ex-sx)*scaleX, h=Math.abs(ey-sy)*scaleY;
+    if(w<5||h<5) {{ document.getElementById("hint").textContent="⚠️ Selecione uma área!"; return; }}
+    cv.width=200; cv.height=200;
+    const ctx=cv.getContext("2d");
+    ctx.beginPath(); ctx.arc(100,100,100,0,Math.PI*2); ctx.clip();
+    ctx.drawImage(img, x, y, w, h, 0, 0, 200, 200);
+    const d = cv.toDataURL("image/jpeg", 0.92);
+    document.getElementById("preview").src = d;
+    document.getElementById("pw").style.display = "flex";
+    const ta = document.getElementById("b64area");
+    ta.style.display="block"; ta.value=d;
+    setTimeout(()=>{{ ta.select(); ta.setSelectionRange(0,99999); }}, 100);
+    document.getElementById("hint").textContent = "✅ Texto copiado automaticamente! Se não, pressione Ctrl+C";
+    try {{ document.execCommand('copy'); }} catch(e) {{}}
+  }} catch(e) {{
+    document.getElementById("err").style.display="block";
+    document.getElementById("err").textContent = "⚠️ Erro CORS: use a opção de enviar do computador. ("+e.message+")";
+  }}
 }}
 </script>
-</body></html>""", height=560)
+</body></html>""", height=580)
 
-            st.markdown("**2. Cole aqui e salve:**")
+            st.markdown("**Cole aqui o código recortado e salve:**")
             b64_input = st.text_area(
-                "Cole o código aqui", placeholder="data:image/jpeg;base64,/9j/...",
+                "Cole aqui", placeholder="data:image/jpeg;base64,/9j/...",
                 key="b64_in_"+pessoa_crop["id"], height=70, label_visibility="collapsed"
             )
             if b64_input and b64_input.strip().startswith("data:image"):
@@ -420,48 +481,27 @@ function recortar(){{
                     _, encoded = b64_input.strip().split(",", 1)
                     img_data = base64.b64decode(encoded)
                     c1, c2 = st.columns([1,3])
-                    with c1: st.image(b64_input.strip(), width=80)
+                    with c1:
+                        st.image(b64_input.strip(), width=80, caption="Prévia")
                     with c2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("💾 Salvar como perfil", use_container_width=True,
+                        st.markdown(f"**{nome_c}** — foto de perfil")
+                        if st.button("💾 Salvar foto de perfil", use_container_width=True,
                                      type="primary", key="sv_b64_"+pessoa_crop["id"]):
-                            with st.spinner("Salvando..."):
+                            with st.spinner("Salvando no Cloudinary..."):
                                 try:
-                                    url_p = _upload(img_data, "perfil.jpg", "Perfis")
+                                    url_p = _upload(img_data, f"perfil_{nome_c}.jpg", "Perfis")
                                     pessoa_crop["foto_perfil"] = url_p
                                     _salvar_foto_perfil(pessoa_crop["id"], url_p)
                                     for p in st.session_state.gal_arv:
                                         if p["id"] == pessoa_crop["id"]:
                                             p["foto_perfil"] = url_p
-                                    st.success("✅ Foto de perfil salva!")
+                                    st.success(f"✅ Foto de perfil de {nome_c} salva!")
                                     st.session_state.crop_pid = None
                                     st.rerun()
                                 except Exception as e:
                                     st.error("Erro: "+str(e))
                 except Exception:
-                    st.warning("Texto inválido. Copie tudo a partir de 'data:image...'")
-
-            st.markdown("---")
-            st.markdown("**Ou envie uma foto já cortada:**")
-            perfil_file = st.file_uploader("Foto pronta", type=["jpg","jpeg","png","webp"], key="perfil_pronto_"+pessoa_crop["id"])
-            if perfil_file:
-                st.image(perfil_file, width=90)
-                if st.button("💾 Salvar como perfil", use_container_width=True,
-                             type="primary", key="sv_pf_"+pessoa_crop["id"]):
-                    with st.spinner("Enviando..."):
-                        try:
-                            perfil_file.seek(0)
-                            url_p = _upload(perfil_file.read(), perfil_file.name, "Perfis")
-                            pessoa_crop["foto_perfil"] = url_p
-                            _salvar_foto_perfil(pessoa_crop["id"], url_p)
-                            for p in st.session_state.gal_arv:
-                                if p["id"] == pessoa_crop["id"]:
-                                    p["foto_perfil"] = url_p
-                            st.success("✅ Salvo!")
-                            st.session_state.crop_pid = None
-                            st.rerun()
-                        except Exception as e:
-                            st.error("Erro: "+str(e))
+                    st.warning("Texto inválido — copie tudo a partir de 'data:image...'")
 
         if st.button("✖ Cancelar", use_container_width=True, key="cancel_crop"):
             st.session_state.crop_pid = None
