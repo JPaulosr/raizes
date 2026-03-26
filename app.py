@@ -25,6 +25,7 @@ footer{display:none!important}#MainMenu{display:none!important}header{display:no
 .node-badge{position:absolute;top:-7px;right:-7px;background:#6ee8aa;color:#0a2a1a;border-radius:10px;font-size:9px;font-weight:700;padding:2px 6px;}
 .rel-tag{font-size:.65rem;background:rgba(200,160,255,.15);color:rgba(200,160,255,.8);border-radius:8px;padding:2px 6px;margin:2px 1px;display:inline-block;}
 .conector-v{width:2px;height:24px;background:rgba(255,255,255,.1);margin:0 auto;}
+.gen-label{font-size:.68rem;color:rgba(255,255,255,.25);text-transform:uppercase;letter-spacing:1.2px;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);}
 .det-panel{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:20px;}
 .det-nome{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:600;font-style:italic;color:rgba(255,255,255,.9);margin-bottom:3px;}
 .det-rel{font-size:.75rem;color:rgba(255,255,255,.28);text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px;}
@@ -487,10 +488,37 @@ with tab_arv:
             niveis: dict = {}
             for p in arvore:
                 niveis.setdefault(_nivel(p), []).append(p)
-            for n in sorted(niveis.keys()):
-                if n > min(niveis.keys()):
-                    st.markdown('<div class="conector-v"></div>', unsafe_allow_html=True)
+
+            nivs_sorted = sorted(niveis.keys())
+            gen_labels  = {
+                0:"🌿 Bisavós", 1:"🌳 Avós", 2:"👨‍👩‍👧 Pais / Tios",
+                3:"🧑 Minha Geração", 4:"👶 Filhos"
+            }
+            for idx, n in enumerate(nivs_sorted):
+                label = gen_labels.get(n, f"Geração {n}")
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:10px;margin:{"18px" if idx>0 else "0"} 0 10px;">'
+                    f'<div style="font-size:.7rem;color:rgba(255,255,255,.28);text-transform:uppercase;'
+                    f'letter-spacing:1px;white-space:nowrap;">{label}</div>'
+                    f'<div style="flex:1;height:1px;background:rgba(255,255,255,.07);"></div></div>',
+                    unsafe_allow_html=True
+                )
+                if idx > 0:
+                    # Conector vertical central
+                    st.markdown(
+                        '<div style="width:2px;height:20px;background:rgba(255,255,255,.1);margin:0 auto -10px;"></div>',
+                        unsafe_allow_html=True
+                    )
+
                 pessoas_n = niveis[n]
+                # Linha horizontal conectando cards do mesmo nível (se >1)
+                if len(pessoas_n) > 1:
+                    st.markdown(
+                        f'<div style="height:2px;background:rgba(255,255,255,.07);'
+                        f'width:{min(80, len(pessoas_n)*18)}%;margin:0 auto 0;border-radius:2px;"></div>',
+                        unsafe_allow_html=True
+                    )
+
                 cols = st.columns(max(len(pessoas_n), 1))
                 for col, p in zip(cols, pessoas_n):
                     with col:
@@ -529,9 +557,49 @@ with tab_arv:
                                        opcoes, key="add_irmao_de",
                                        help="Ex: se é Tio materno, selecione a Mãe aqui")
 
-            st.caption("Foto de perfil (opcional)")
+            st.caption("Foto de perfil — envie a foto e recorte o rosto")
             fp_f = st.file_uploader("", type=["jpg","jpeg","png","webp"], key="add_fp", label_visibility="collapsed")
-            if fp_f: st.image(fp_f, use_container_width=True)
+            if fp_f:
+                import base64
+                img_b64 = base64.b64encode(fp_f.read()).decode()
+                fp_f.seek(0)
+                import streamlit.components.v1 as components
+                components.html(f"""
+                <style>
+                body{{margin:0;background:transparent;font-family:sans-serif;}}
+                #wrap{{position:relative;display:inline-block;width:100%;}}
+                #img_src{{max-width:100%;display:block;cursor:crosshair;user-select:none;}}
+                #sel{{position:absolute;border:2px dashed #6ee8aa;background:rgba(110,232,170,.1);
+                      pointer-events:none;display:none;box-sizing:border-box;}}
+                .hint{{font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;}}
+                </style>
+                <div id="wrap">
+                  <img id="img_src" src="data:image/jpeg;base64,{img_b64}">
+                  <div id="sel"></div>
+                </div>
+                <p class="hint">👆 Arraste para selecionar o rosto. A seleção vai aparecer ao salvar.</p>
+                <script>
+                const img=document.getElementById('img_src');
+                const sel=document.getElementById('sel');
+                let sx,sy,dragging=false;
+                img.addEventListener('mousedown',e=>{{
+                  const r=img.getBoundingClientRect();
+                  sx=e.clientX-r.left; sy=e.clientY-r.top;
+                  dragging=true; sel.style.display='block';
+                  sel.style.left=sx+'px'; sel.style.top=sy+'px';
+                  sel.style.width='0'; sel.style.height='0';
+                }});
+                document.addEventListener('mousemove',e=>{{
+                  if(!dragging) return;
+                  const r=img.getBoundingClientRect();
+                  const ex=Math.min(Math.max(e.clientX-r.left,0),img.width);
+                  const ey=Math.min(Math.max(e.clientY-r.top,0),img.height);
+                  sel.style.left=Math.min(sx,ex)+'px'; sel.style.top=Math.min(sy,ey)+'px';
+                  sel.style.width=Math.abs(ex-sx)+'px'; sel.style.height=Math.abs(ey-sy)+'px';
+                }});
+                document.addEventListener('mouseup',e=>{{ dragging=false; }});
+                </script>
+                """, height=300)
 
             c1, c2 = st.columns(2)
             with c1:
@@ -616,6 +684,13 @@ with tab_arv:
                 st.markdown(f"**📷 Fotos de {pessoa['nome'].split()[0]}**")
                 for foto in fotos_p:
                     st.markdown(_foto_par_html(foto), unsafe_allow_html=True)
+                    with st.expander("✏️ Editar título"):
+                        novo_tit = st.text_input("Título", value=foto.get("titulo",""),
+                                                  key="tit_ed_"+foto["id"])
+                        if st.button("💾 Salvar título", key="sv_tit_"+foto["id"], use_container_width=True):
+                            foto["titulo"] = novo_tit.strip() or "Sem título"
+                            salvar_tudo()
+                            st.rerun()
                     if st.button("Desvincular", key="desv_"+foto["id"]+"_"+pessoa["id"], use_container_width=True):
                         foto["pessoas"] = [x for x in foto.get("pessoas",[]) if x != pessoa["id"]]
                         salvar_tudo()
@@ -787,15 +862,24 @@ with tab_acervo:
         for i, foto in enumerate(fotos_show):
             st.markdown(_foto_par_html(foto), unsafe_allow_html=True)
 
-            with st.expander("👥 Editar pessoas nesta foto"):
-                if arvore:
-                    nms2   = {p["nome"]: p["id"] for p in arvore}
-                    atuals = [p["nome"] for p in arvore if p["id"] in foto.get("pessoas",[])]
-                    novos  = st.multiselect("Pessoas", list(nms2.keys()), default=atuals, key="ed_p_"+foto["id"])
-                    if st.button("💾 Salvar", key="sv_p_"+foto["id"], use_container_width=True):
-                        foto["pessoas"] = [nms2[n] for n in novos]
+            col_tit, col_pess = st.columns(2)
+            with col_tit:
+                with st.expander("✏️ Editar título"):
+                    novo_tit2 = st.text_input("Título", value=foto.get("titulo",""), key="tit2_"+foto["id"])
+                    if st.button("💾 Salvar", key="sv_tit2_"+foto["id"], use_container_width=True):
+                        foto["titulo"] = novo_tit2.strip() or "Sem título"
                         salvar_tudo()
                         st.rerun()
+            with col_pess:
+                with st.expander("👥 Editar pessoas"):
+                    if arvore:
+                        nms2   = {p["nome"]: p["id"] for p in arvore}
+                        atuals = [p["nome"] for p in arvore if p["id"] in foto.get("pessoas",[])]
+                        novos  = st.multiselect("Pessoas", list(nms2.keys()), default=atuals, key="ed_p_"+foto["id"])
+                        if st.button("💾 Salvar", key="sv_p_"+foto["id"], use_container_width=True):
+                            foto["pessoas"] = [nms2[n] for n in novos]
+                            salvar_tudo()
+                            st.rerun()
 
             b1, b2, b3, _ = st.columns([1,1,1,2])
             with b1: st.link_button("Antiga",     foto.get("antiga",""),     use_container_width=True)
