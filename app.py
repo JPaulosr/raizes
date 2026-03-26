@@ -210,13 +210,13 @@ def _salvar(arvore, acervo):
         st.error("Erro ao salvar: " + str(e))
 
 # ── Session State ─────────────────────────────────────────────────────
-if "arvore" not in st.session_state:
-    arv, acervo = _carregar()
-    st.session_state.arvore  = arv
-    st.session_state.acervo  = acervo
-if "ativo"    not in st.session_state: st.session_state.ativo    = None
-if "modo"     not in st.session_state: st.session_state.modo     = "ver"
-if "aba"      not in st.session_state: st.session_state.aba      = "arvore"
+if "arvore" not in st.session_state or "acervo" not in st.session_state:
+    arv, acv = _carregar()
+    st.session_state.arvore = arv
+    st.session_state.acervo = acv
+if "ativo" not in st.session_state: st.session_state.ativo = None
+if "modo"  not in st.session_state: st.session_state.modo  = "ver"
+if "aba"   not in st.session_state: st.session_state.aba   = "arvore"
 
 arvore = st.session_state.arvore
 acervo = st.session_state.acervo
