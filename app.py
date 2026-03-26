@@ -53,11 +53,18 @@ st.markdown(CSS, unsafe_allow_html=True)
 # Cloudinary
 # ─────────────────────────────────────────────────────────────────────
 def _s(k, d=""):
+    # Acesso direto (mais confiavel no Streamlit Cloud)
+    try:
+        v = st.secrets[k]
+        return str(v).strip() if v else d
+    except:
+        pass
     try:
         v = st.secrets.get(k, d)
         return str(v).strip() if v else d
     except:
-        return os.environ.get(k, d)
+        pass
+    return os.environ.get(k, d)
 
 def _upload(fb, fname, folder="Raizes"):
     # Lê sempre na hora para pegar secrets atualizados
@@ -401,6 +408,18 @@ with tab_debug:
 Abra a planilha no Google Sheets → Compartilhar → adicione o  com permissão de **Editor**.
 """)
 
+    st.divider()
+    st.markdown("#### Credenciais configuradas")
+    cols_cred = st.columns(3)
+    with cols_cred[0]:
+        v = _s("CLOUDINARY_API_KEY")
+        st.metric("CLOUDINARY_API_KEY", "✅ OK" if v else "❌ Faltando", v[:6]+"..." if v else "")
+    with cols_cred[1]:
+        v = _s("CLOUDINARY_CLOUD_NAME", "")
+        st.metric("CLOUDINARY_CLOUD_NAME", "✅ OK" if v else "❌ Faltando", v)
+    with cols_cred[2]:
+        v = _s("PLANILHA_URL_RAIZES") or _s("PLANILHA_URL")
+        st.metric("PLANILHA_URL", "✅ OK" if v else "❌ Faltando", "")
     st.divider()
     c1, c2 = st.columns(2)
     with c1:
