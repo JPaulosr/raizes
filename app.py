@@ -192,11 +192,25 @@ NIVEL_REL = {
 
 def _carregar():
     if ARVORE_PATH.exists():
-        try: return json.loads(ARVORE_PATH.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(ARVORE_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                return raw          # formato antigo — lista direta
+            return raw.get("arvore", [])   # formato novo — dict com chave arvore
         except: pass
     return []
 
 def _salvar(dados):
+    # Preserva a chave "galeria" se já existir no arquivo
+    galeria_existente = []
+    if ARVORE_PATH.exists():
+        try:
+            raw = json.loads(ARVORE_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                galeria_existente = raw.get("galeria", [])
+        except: pass
+    out = {"arvore": dados, "galeria": galeria_existente}
+    ARVORE_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     ARVORE_PATH.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def _get_secret(key, default=""):
