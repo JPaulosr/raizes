@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-# pages/1_Galeria_Fotos.py — Galeria com lightbox, filtros e marcação de rostos
+# pages/1_Galeria_Fotos.py
 
 import streamlit as st
 import streamlit.components.v1 as components
-import json, os, hashlib, time, urllib.request
+import json, os, hashlib, time, urllib.request, base64
 from pathlib import Path
 from datetime import datetime
 
@@ -14,66 +14,34 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 html,body,[class*="css"]{font-family:'DM Sans',sans-serif;}
 footer{display:none!important}#MainMenu{display:none!important}header{display:none!important}
-.gal-header{text-align:center;padding:36px 20px 24px;}
-.gal-header h1{font-family:'Cormorant Garamond',serif;font-size:2.6rem;font-weight:600;color:rgba(255,255,255,.92);margin:0 0 8px;}
-.gal-header p{font-size:.85rem;color:rgba(255,255,255,.35);margin:0;}
-/* Cards da galeria */
-.foto-card{position:relative;cursor:pointer;border-radius:14px;overflow:hidden;background:#111;border:1px solid rgba(255,255,255,.08);transition:transform .2s,border-color .2s;}
-.foto-card:hover{transform:scale(1.02);border-color:rgba(255,255,255,.22);}
-.foto-card img{width:100%;height:220px;object-fit:cover;display:block;filter:sepia(.12) brightness(.9);}
-.foto-card-info{padding:10px 14px 12px;}
-.foto-card-titulo{font-family:'Cormorant Garamond',serif;font-size:.95rem;font-style:italic;color:rgba(255,255,255,.82);}
-.foto-card-pessoas{font-size:.72rem;color:rgba(255,255,255,.35);margin-top:3px;}
-.foto-card-pessoas span{background:rgba(255,255,255,.07);border-radius:8px;padding:1px 6px;margin-right:3px;}
-/* Lightbox */
-.lb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.96);z-index:9999;align-items:center;justify-content:center;flex-direction:column;}
-.lb-overlay.open{display:flex;}
-.lb-close{position:absolute;top:18px;right:24px;font-size:1.8rem;color:rgba(255,255,255,.6);cursor:pointer;z-index:10001;background:none;border:none;line-height:1;}
-.lb-close:hover{color:#fff;}
-.lb-body{display:flex;gap:2px;width:95vw;max-height:80vh;}
-.lb-side{flex:1;position:relative;overflow:hidden;background:#0a0a0a;}
-.lb-side img{width:100%;height:100%;object-fit:contain;display:block;}
-.lb-badge{position:absolute;bottom:12px;left:12px;font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;}
-.lb-badge-a{background:rgba(200,170,100,.3);color:#e8c97a;}
-.lb-badge-r{background:rgba(100,200,150,.25);color:#6ee8aa;}
-.lb-info{text-align:center;padding:14px 0 4px;color:rgba(255,255,255,.7);font-family:'Cormorant Garamond',serif;font-size:1.1rem;}
-.lb-pessoas{font-size:.8rem;color:rgba(255,255,255,.35);margin-top:4px;}
-.lb-pessoas span{background:rgba(255,255,255,.08);border-radius:8px;padding:2px 9px;margin:0 3px;}
-/* Face tags na foto */
-.face-container{position:relative;display:inline-block;width:100%;}
-.face-tag{position:absolute;border:2px solid rgba(110,232,170,.7);border-radius:6px;cursor:default;transition:border-color .15s;}
-.face-tag:hover{border-color:#6ee8aa;}
-.face-tag .face-label{position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:rgba(10,20,15,.92);border:1px solid rgba(110,232,170,.4);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:500;color:#6ee8aa;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;}
-.face-tag:hover .face-label{opacity:1;}
+.gal-header{text-align:center;padding:30px 20px 18px;}
+.gal-header h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;font-weight:600;color:rgba(255,255,255,.92);margin:0 0 6px;}
+.gal-header p{font-size:.82rem;color:rgba(255,255,255,.35);margin:0;}
+.foto-card{border-radius:12px;overflow:hidden;background:#111;border:1px solid rgba(255,255,255,.08);cursor:pointer;transition:transform .2s,border-color .2s;}
+.foto-card:hover{transform:translateY(-3px);border-color:rgba(255,255,255,.2);}
+.foto-card img{width:100%;height:200px;object-fit:cover;display:block;}
+.foto-card-info{padding:10px 12px 12px;}
+.foto-card-tit{font-family:'Cormorant Garamond',serif;font-size:.92rem;font-style:italic;color:rgba(255,255,255,.8);}
+.foto-card-pess{font-size:.7rem;color:rgba(255,255,255,.3);margin-top:3px;}
+.foto-card-pess span{background:rgba(255,255,255,.07);border-radius:6px;padding:1px 6px;margin-right:2px;}
 [data-testid="stFileUploaderDropzone"]{background:rgba(255,255,255,.03)!important;border:1px dashed rgba(255,255,255,.14)!important;border-radius:10px!important;}
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────
-# Secrets
-# ─────────────────────────────────────────────────────────────────────
+# ── Secrets ───────────────────────────────────────────────────────────
 def _s(k, d=""):
-    try:
-        return str(st.secrets[k]).strip() or d
+    try: return str(st.secrets[k]).strip() or d
     except: pass
-    try:
-        return str(st.secrets.get(k, d)).strip() or d
-    except: pass
-    # seção [CLOUDINARY]
-    _MAP = {
-        "CLOUDINARY_API_KEY":    ("CLOUDINARY","api_key"),
-        "CLOUDINARY_API_SECRET": ("CLOUDINARY","api_secret"),
-        "CLOUDINARY_CLOUD_NAME": ("CLOUDINARY","cloud_name"),
-    }
+    _MAP = {"CLOUDINARY_API_KEY":("CLOUDINARY","api_key"),
+            "CLOUDINARY_API_SECRET":("CLOUDINARY","api_secret"),
+            "CLOUDINARY_CLOUD_NAME":("CLOUDINARY","cloud_name")}
     if k in _MAP:
-        sec, sub = _MAP[k]
+        sec,sub = _MAP[k]
         try: return str(st.secrets[sec][sub]).strip() or d
         except: pass
     return os.environ.get(k, d)
 
-# ─────────────────────────────────────────────────────────────────────
-# Google Sheets — mesma lógica do app.py
-# ─────────────────────────────────────────────────────────────────────
+# ── Google Sheets ─────────────────────────────────────────────────────
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -82,375 +50,513 @@ def _gc():
     creds = Credentials.from_service_account_info(
         dict(st.secrets["GCP_SERVICE_ACCOUNT"]),
         scopes=["https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"]
-    )
+                "https://www.googleapis.com/auth/drive"])
     return gspread.authorize(creds)
 
-def _extrair_key(url_ou_key):
+def _extrair_key(u):
     import re
-    if not url_ou_key: raise ValueError("PLANILHA_URL_RAIZES não configurada.")
-    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url_ou_key)
-    if m: return m.group(1)
-    if "/" not in url_ou_key: return url_ou_key
-    raise ValueError(f"Não consegui extrair ID de: {url_ou_key!r}")
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", u)
+    return m.group(1) if m else u
 
-def _get_planilha():
-    url = _s("PLANILHA_URL_RAIZES") or _s("PLANILHA_URL")
-    return _gc().open_by_key(_extrair_key(url))
+def _get_sh():
+    return _gc().open_by_key(_extrair_key(_s("PLANILHA_URL_RAIZES") or _s("PLANILHA_URL")))
 
-_COLS_P = ["id","nome","relacao","genero","nascimento","falecimento",
-           "foto_perfil","conjuge_id","conjuge_nome","pai_id","pai_nome",
-           "mae_id","mae_nome","foto_ids"]
+_COLS_P = ["id","nome","relacao","genero","nascimento","falecimento","foto_perfil",
+           "conjuge_id","conjuge_nome","pai_id","pai_nome","mae_id","mae_nome",
+           "irmao_de_id","irmao_de_nome","foto_ids"]
 _COLS_F = ["id","titulo","data","antiga","restaurada","pessoas_ids","pessoas_nomes"]
 
 @st.cache_data(ttl=30, show_spinner=False)
 def _carregar():
     try:
-        sh = _get_planilha()
-        # Pessoas
+        sh = _get_sh()
         try:
-            ws_p  = sh.worksheet("Pessoas")
-            rows_p = ws_p.get_all_records(expected_headers=_COLS_P)
+            rows_p = sh.worksheet("Pessoas").get_all_records(expected_headers=_COLS_P)
         except: rows_p = []
-        arvore = []
-        for r in rows_p:
-            if not r.get("id") or not r.get("nome"): continue
-            arvore.append({
-                "id":    str(r["id"]),
-                "nome":  str(r["nome"]),
-                "relacao": str(r.get("relacao","")),
-                "foto_perfil": str(r.get("foto_perfil","")),
-            })
-        # Fotos
+        arvore = [{"id":str(r["id"]),"nome":str(r["nome"]),"relacao":str(r.get("relacao","")),
+                   "foto_perfil":str(r.get("foto_perfil",""))}
+                  for r in rows_p if r.get("id") and r.get("nome")]
         try:
-            ws_f  = sh.worksheet("Fotos")
-            rows_f = ws_f.get_all_records(expected_headers=_COLS_F)
+            rows_f = sh.worksheet("Fotos").get_all_records(expected_headers=_COLS_F)
         except: rows_f = []
         acervo = []
         for r in rows_f:
             if not r.get("id") or not r.get("antiga"): continue
             ids_str = str(r.get("pessoas_ids",""))
             acervo.append({
-                "id":         str(r["id"]),
-                "titulo":     str(r.get("titulo","")),
-                "data":       str(r.get("data","")),
-                "antiga":     str(r["antiga"]),
-                "restaurada": str(r.get("restaurada","")),
-                "pessoas":    [x.strip() for x in ids_str.split(",") if x.strip()],
-                "faces":      json.loads(str(r.get("faces","[]")) or "[]"),
+                "id":str(r["id"]), "titulo":str(r.get("titulo","")),
+                "data":str(r.get("data","")), "antiga":str(r["antiga"]),
+                "restaurada":str(r.get("restaurada","")),
+                "pessoas":[x.strip() for x in ids_str.split(",") if x.strip()],
+                "faces":json.loads(str(r.get("faces","[]") or "[]")),
             })
         return arvore, acervo
     except Exception as e:
-        st.error("Erro ao carregar: "+str(e))
-        return [], []
+        st.error("Erro ao carregar: "+str(e)); return [],[]
 
-def _salvar_faces(foto_id, faces):
-    """Salva as marcações de rostos na aba Fotos."""
+def _salvar_titulo(foto_id, titulo):
     try:
-        sh   = _get_planilha()
-        ws_f = sh.worksheet("Fotos")
-        rows = ws_f.get_all_values()
-        # Encontrar coluna "faces" — adiciona se não existir
+        ws = _get_sh().worksheet("Fotos")
+        rows = ws.get_all_values()
         header = rows[0] if rows else []
-        if "faces" not in header:
-            col_idx = len(header) + 1
-            ws_f.update_cell(1, col_idx, "faces")
-        else:
-            col_idx = header.index("faces") + 1
-        # Encontrar linha do foto_id
-        for i, row in enumerate(rows[1:], start=2):
-            if row and row[0] == foto_id:
-                ws_f.update_cell(i, col_idx, json.dumps(faces, ensure_ascii=False))
-                _carregar.clear()
-                return True
-        return False
-    except Exception as e:
-        st.error("Erro ao salvar rostos: "+str(e))
-        return False
+        col = header.index("titulo")+1 if "titulo" in header else None
+        if not col: return
+        for i,row in enumerate(rows[1:],start=2):
+            if row and row[0]==foto_id:
+                ws.update_cell(i, col, titulo)
+                _carregar.clear(); return
+    except Exception as e: st.error("Erro: "+str(e))
 
-# ─────────────────────────────────────────────────────────────────────
-# Upload Cloudinary
-# ─────────────────────────────────────────────────────────────────────
-def _upload(fb, fname, folder="Raizes"):
-    cloud = _s("CLOUDINARY_CLOUD_NAME","db8ipmete")
-    akey  = _s("CLOUDINARY_API_KEY")
-    asec  = _s("CLOUDINARY_API_SECRET")
-    if not akey: raise ValueError("CLOUDINARY_API_KEY não configurada.")
-    ts  = str(int(time.time()))
-    pid = folder+"/"+Path(fname).stem+"_"+ts
-    sig = hashlib.sha1(("folder="+folder+"&public_id="+pid+"&timestamp="+ts+asec).encode()).hexdigest()
-    b   = "----B"+ts
-    body = ("--"+b+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\""+fname+"\"\r\nContent-Type: image/jpeg\r\n\r\n").encode()
-    body += fb
-    body += ("\r\n--"+b+"\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\n"+akey+"\r\n"
-             "--"+b+"\r\nContent-Disposition: form-data; name=\"timestamp\"\r\n\r\n"+ts+"\r\n"
-             "--"+b+"\r\nContent-Disposition: form-data; name=\"folder\"\r\n\r\n"+folder+"\r\n"
-             "--"+b+"\r\nContent-Disposition: form-data; name=\"public_id\"\r\n\r\n"+pid+"\r\n"
-             "--"+b+"\r\nContent-Disposition: form-data; name=\"signature\"\r\n\r\n"+sig+"\r\n"
-             "--"+b+"--\r\n").encode()
-    req = urllib.request.Request(
-        "https://api.cloudinary.com/v1_1/"+cloud+"/image/upload",
-        data=body, headers={"Content-Type":"multipart/form-data; boundary="+b}
-    )
-    with urllib.request.urlopen(req, timeout=40) as r:
-        return json.loads(r.read())["secure_url"]
-
-def _salvar_foto_sheets(nova_foto, arvore):
-    """Adiciona nova foto na aba Fotos do Google Sheets."""
+def _salvar_foto_perfil(pessoa_id, url):
     try:
-        sh   = _get_planilha()
-        ws_f = sh.worksheet("Fotos")
-        ids_str   = ",".join(nova_foto.get("pessoas",[]))
-        nomes_str = ",".join(
-            next((p["nome"] for p in arvore if p["id"]==pid), "")
-            for pid in nova_foto.get("pessoas",[])
-        )
-        ws_f.append_row([
-            nova_foto["id"],
-            nova_foto["titulo"],
-            nova_foto["data"],
-            nova_foto["antiga"],
-            nova_foto["restaurada"],
-            ids_str,
-            nomes_str,
-            "[]"  # faces vazias
-        ])
-        _carregar.clear()
-        return True
-    except Exception as e:
-        st.error("Erro ao salvar foto: "+str(e))
-        return False
+        ws = _get_sh().worksheet("Pessoas")
+        rows = ws.get_all_values()
+        header = rows[0] if rows else []
+        col = header.index("foto_perfil")+1 if "foto_perfil" in header else None
+        if not col: return
+        for i,row in enumerate(rows[1:],start=2):
+            if row and row[0]==pessoa_id:
+                ws.update_cell(i, col, url)
+                _carregar.clear(); return
+    except Exception as e: st.error("Erro: "+str(e))
 
-# ─────────────────────────────────────────────────────────────────────
-# Session state
-# ─────────────────────────────────────────────────────────────────────
-if "gal_carregado" not in st.session_state:
-    arv, acv = _carregar()
-    st.session_state.gal_arvore  = arv
-    st.session_state.gal_acervo  = acv
-    st.session_state.gal_carregado = True
+def _salvar_foto_sheets(nova, arvore):
+    try:
+        ws = _get_sh().worksheet("Fotos")
+        ids_str   = ",".join(nova.get("pessoas",[]))
+        nomes_str = ",".join(next((p["nome"] for p in arvore if p["id"]==pid),"") for pid in nova.get("pessoas",[]))
+        ws.append_row([nova["id"],nova["titulo"],nova["data"],nova["antiga"],nova["restaurada"],ids_str,nomes_str,"[]"])
+        _carregar.clear(); return True
+    except Exception as e: st.error("Erro: "+str(e)); return False
 
-if "lb_foto_id" not in st.session_state: st.session_state.lb_foto_id = None
-if "face_modo"  not in st.session_state: st.session_state.face_modo  = None
+# ── Cloudinary ────────────────────────────────────────────────────────
+def _upload(fb, fname, folder="Raizes"):
+    cloud=_s("CLOUDINARY_CLOUD_NAME","db8ipmete"); akey=_s("CLOUDINARY_API_KEY"); asec=_s("CLOUDINARY_API_SECRET")
+    if not akey: raise ValueError("CLOUDINARY_API_KEY não configurada.")
+    ts=str(int(time.time())); pid=folder+"/"+Path(fname).stem+"_"+ts
+    sig=hashlib.sha1(("folder="+folder+"&public_id="+pid+"&timestamp="+ts+asec).encode()).hexdigest()
+    b="----B"+ts
+    body=("--"+b+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\""+fname+"\"\r\nContent-Type: image/jpeg\r\n\r\n").encode()
+    body+=fb
+    body+=("\r\n--"+b+"\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\n"+akey+"\r\n"
+           "--"+b+"\r\nContent-Disposition: form-data; name=\"timestamp\"\r\n\r\n"+ts+"\r\n"
+           "--"+b+"\r\nContent-Disposition: form-data; name=\"folder\"\r\n\r\n"+folder+"\r\n"
+           "--"+b+"\r\nContent-Disposition: form-data; name=\"public_id\"\r\n\r\n"+pid+"\r\n"
+           "--"+b+"\r\nContent-Disposition: form-data; name=\"signature\"\r\n\r\n"+sig+"\r\n"
+           "--"+b+"--\r\n").encode()
+    req=urllib.request.Request("https://api.cloudinary.com/v1_1/"+cloud+"/image/upload",
+        data=body,headers={"Content-Type":"multipart/form-data; boundary="+b})
+    with urllib.request.urlopen(req,timeout=40) as r: return json.loads(r.read())["secure_url"]
 
-def arvore(): return st.session_state.gal_arvore
-def acervo(): return st.session_state.gal_acervo
+# ── Session state ─────────────────────────────────────────────────────
+if "gal_ok" not in st.session_state:
+    arv,acv = _carregar()
+    st.session_state.gal_arv = arv
+    st.session_state.gal_acv = acv
+    st.session_state.gal_ok  = True
+if "viewer_id"   not in st.session_state: st.session_state.viewer_id   = None
+if "crop_pid"    not in st.session_state: st.session_state.crop_pid    = None
 
-def _nome_curto(pid):
-    p = next((x for x in arvore() if x["id"]==pid), None)
+def arv(): return st.session_state.gal_arv
+def acv(): return st.session_state.gal_acv
+def _nc(pid): 
+    p=next((x for x in arv() if x["id"]==pid),None)
     return p["nome"].split()[0] if p else "?"
 
-# ─────────────────────────────────────────────────────────────────────
-# Header
-# ─────────────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════
+# VIEWER FULLSCREEN com zoom + slider comparação
+# ═════════════════════════════════════════════════════════════════════
+if st.session_state.viewer_id:
+    foto = next((f for f in acv() if f["id"]==st.session_state.viewer_id), None)
+    if foto:
+        nomes = [_nc(pid) for pid in foto.get("pessoas",[]) if next((p for p in arv() if p["id"]==pid),None)]
+        tags  = "".join(f"<span style='background:rgba(255,255,255,.1);border-radius:8px;padding:2px 10px;margin:0 4px;font-size:.8rem;color:rgba(255,255,255,.6)'>{n}</span>" for n in nomes)
+
+        components.html(f"""
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#0a0a0a;color:#fff;font-family:'DM Sans',sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column;}}
+.toolbar{{display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0;}}
+.btn{{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.85);border-radius:8px;padding:5px 14px;cursor:pointer;font-size:.8rem;transition:background .15s;}}
+.btn:hover{{background:rgba(255,255,255,.2);}}
+.btn.active{{background:rgba(110,232,170,.2);border-color:rgba(110,232,170,.4);color:#6ee8aa;}}
+.titulo{{font-family:serif;font-style:italic;font-size:1rem;color:rgba(255,255,255,.7);flex:1;}}
+.pessoas{{font-size:.75rem;}}
+.viewer{{flex:1;position:relative;overflow:hidden;display:flex;}}
+/* Modo lado a lado */
+#modo-lado{{display:flex;width:100%;height:100%;}}
+.lado{{flex:1;position:relative;overflow:hidden;cursor:zoom-in;}}
+.lado img{{width:100%;height:100%;object-fit:contain;display:block;transform-origin:center center;transition:transform .1s;}}
+.lado-badge{{position:absolute;bottom:12px;left:12px;font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;pointer-events:none;}}
+.badge-a{{background:rgba(200,170,100,.3);color:#e8c97a;}}
+.badge-r{{background:rgba(100,200,150,.25);color:#6ee8aa;}}
+/* Modo slider */
+#modo-slider{{display:none;width:100%;height:100%;position:relative;cursor:col-resize;overflow:hidden;}}
+#slider-antiga{{position:absolute;inset:0;}}
+#slider-antiga img{{width:100%;height:100%;object-fit:contain;}}
+#slider-restaurada{{position:absolute;inset:0;overflow:hidden;}}
+#slider-restaurada img{{width:100%;height:100%;object-fit:contain;}}
+#slider-linha{{position:absolute;top:0;bottom:0;width:3px;background:#6ee8aa;cursor:col-resize;z-index:10;}}
+#slider-handle{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:#6ee8aa;display:flex;align-items:center;justify-content:center;color:#0a2a1a;font-size:1rem;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.4);}}
+/* Zoom info */
+.zoom-info{{position:absolute;bottom:12px;right:12px;background:rgba(0,0,0,.6);border-radius:8px;padding:4px 10px;font-size:.72rem;color:rgba(255,255,255,.5);z-index:20;}}
+</style></head><body>
+
+<div class="toolbar">
+  <span class="titulo">{foto.get('titulo','Sem título')}</span>
+  <span class="pessoas">{tags}</span>
+  <button class="btn active" id="btn-lado" onclick="setModo('lado')">⬛⬛ Lado a lado</button>
+  <button class="btn" id="btn-slider" onclick="setModo('slider')">◧ Comparar</button>
+  <button class="btn" onclick="resetZoom()">🔍 Reset zoom</button>
+</div>
+
+<div class="viewer">
+  <!-- MODO LADO A LADO -->
+  <div id="modo-lado">
+    <div class="lado" id="lado-a" onwheel="zoom(event,'a')" onmousedown="startPan(event,'a')" style="border-right:1px solid rgba(255,255,255,.05);">
+      <img id="img-a" src="{foto['antiga']}" draggable="false">
+      <span class="lado-badge badge-a">ANTIGA</span>
+      <span class="zoom-info" id="zoom-a">100%</span>
+    </div>
+    <div class="lado" id="lado-r" onwheel="zoom(event,'r')" onmousedown="startPan(event,'r')">
+      <img id="img-r" src="{foto['restaurada']}" draggable="false">
+      <span class="lado-badge badge-r">✨ RESTAURADA</span>
+      <span class="zoom-info" id="zoom-r">100%</span>
+    </div>
+  </div>
+
+  <!-- MODO SLIDER -->
+  <div id="modo-slider">
+    <div id="slider-antiga"><img src="{foto['antiga']}"></div>
+    <div id="slider-restaurada" style="width:50%">
+      <img src="{foto['restaurada']}" style="min-width:calc(100vw);position:absolute;left:0;">
+    </div>
+    <div id="slider-linha" style="left:50%">
+      <div id="slider-handle">⇔</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Estado de zoom/pan ──────────────────────────────────────────────
+const state = {{
+  a: {{scale:1, x:0, y:0, panning:false, startX:0, startY:0, ox:0, oy:0}},
+  r: {{scale:1, x:0, y:0, panning:false, startX:0, startY:0, ox:0, oy:0}}
+}};
+
+function applyTransform(id) {{
+  const s = state[id];
+  const img = document.getElementById('img-'+id);
+  img.style.transform = `scale(${{s.scale}}) translate(${{s.x}}px, ${{s.y}}px)`;
+  document.getElementById('zoom-'+id).textContent = Math.round(s.scale*100)+'%';
+}}
+
+function zoom(e, id) {{
+  e.preventDefault();
+  const s = state[id];
+  const delta = e.deltaY > 0 ? 0.85 : 1.18;
+  s.scale = Math.min(Math.max(s.scale * delta, 0.5), 8);
+  applyTransform(id);
+}}
+
+function startPan(e, id) {{
+  const s = state[id];
+  s.panning = true; s.startX = e.clientX; s.startY = e.clientY;
+  s.ox = s.x; s.oy = s.y;
+  document.getElementById('lado-'+id[0]=='a'?'a':'r').style.cursor='grabbing';
+}}
+
+document.addEventListener('mousemove', e => {{
+  ['a','r'].forEach(id => {{
+    const s = state[id];
+    if(!s.panning) return;
+    s.x = s.ox + (e.clientX - s.startX) / s.scale;
+    s.y = s.oy + (e.clientY - s.startY) / s.scale;
+    applyTransform(id);
+  }});
+}});
+document.addEventListener('mouseup', () => {{
+  state.a.panning = false; state.r.panning = false;
+  document.querySelectorAll('.lado').forEach(el => el.style.cursor='zoom-in');
+}});
+
+function resetZoom() {{
+  ['a','r'].forEach(id => {{ state[id]={{scale:1,x:0,y:0,panning:false,startX:0,startY:0,ox:0,oy:0}}; applyTransform(id); }});
+}}
+
+// ── Slider comparação ───────────────────────────────────────────────
+const sliderDiv = document.getElementById('modo-slider');
+const linha = document.getElementById('slider-linha');
+const restaurada = document.getElementById('slider-restaurada');
+let sliderDragging = false;
+let sliderPct = 50;
+
+function setSliderPct(pct) {{
+  sliderPct = Math.min(Math.max(pct, 2), 98);
+  linha.style.left = sliderPct + '%';
+  restaurada.style.width = sliderPct + '%';
+}}
+
+linha.addEventListener('mousedown', e => {{ sliderDragging = true; e.preventDefault(); }});
+sliderDiv.addEventListener('mousemove', e => {{
+  if(!sliderDragging) return;
+  const r = sliderDiv.getBoundingClientRect();
+  setSliderPct((e.clientX - r.left) / r.width * 100);
+}});
+document.addEventListener('mouseup', () => {{ sliderDragging = false; }});
+
+// Touch support
+linha.addEventListener('touchstart', e => {{ sliderDragging = true; }});
+sliderDiv.addEventListener('touchmove', e => {{
+  if(!sliderDragging) return;
+  const r = sliderDiv.getBoundingClientRect();
+  setSliderPct((e.touches[0].clientX - r.left) / r.width * 100);
+}});
+document.addEventListener('touchend', () => {{ sliderDragging = false; }});
+
+// ── Trocar modo ─────────────────────────────────────────────────────
+function setModo(modo) {{
+  document.getElementById('modo-lado').style.display = modo==='lado' ? 'flex' : 'none';
+  document.getElementById('modo-slider').style.display = modo==='slider' ? 'block' : 'none';
+  document.getElementById('btn-lado').classList.toggle('active', modo==='lado');
+  document.getElementById('btn-slider').classList.toggle('active', modo==='slider');
+}}
+</script>
+</body></html>
+        """, height=680, scrolling=False)
+
+        if st.button("✖ Fechar viewer", use_container_width=True):
+            st.session_state.viewer_id = None
+            st.rerun()
+
+        # Editar título inline
+        c1, c2 = st.columns([3,1])
+        with c1:
+            novo_tit = st.text_input("✏️ Título da foto", value=foto.get("titulo",""), key="vw_tit")
+        with c2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("💾 Salvar título", use_container_width=True):
+                foto["titulo"] = novo_tit.strip() or "Sem título"
+                _salvar_titulo(foto["id"], foto["titulo"])
+                st.rerun()
+        st.divider()
+
+# ═════════════════════════════════════════════════════════════════════
+# RECORTE DE ROSTO para foto de perfil
+# ═════════════════════════════════════════════════════════════════════
+if st.session_state.crop_pid:
+    pessoa_crop = next((p for p in arv() if p["id"]==st.session_state.crop_pid), None)
+    if pessoa_crop:
+        st.markdown(f"### ✂️ Recortar foto de perfil — {pessoa_crop['nome'].split()[0]}")
+        st.caption("Faça upload de uma foto, arraste para selecionar o rosto e clique em Recortar & Salvar.")
+
+        crop_file = st.file_uploader("Envie a foto", type=["jpg","jpeg","png","webp"], key="crop_file")
+        if crop_file:
+            img_bytes = crop_file.read()
+            img_b64   = base64.b64encode(img_bytes).decode()
+            img_ext   = crop_file.name.rsplit(".",1)[-1].lower()
+            mime      = "image/png" if img_ext=="png" else "image/jpeg"
+
+            # Canvas interativo de recorte
+            result = components.html(f"""
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#111;padding:12px;font-family:sans-serif;}}
+#wrap{{position:relative;display:inline-block;max-width:100%;}}
+#src{{max-width:100%;max-height:400px;display:block;cursor:crosshair;user-select:none;}}
+#sel{{position:absolute;border:2px dashed #6ee8aa;background:rgba(110,232,170,.12);pointer-events:none;display:none;}}
+canvas{{display:none;}}
+.btn{{margin-top:10px;background:#6ee8aa;color:#0a2a1a;border:none;border-radius:8px;padding:8px 20px;font-size:.88rem;font-weight:700;cursor:pointer;}}
+.hint{{font-size:.75rem;color:rgba(255,255,255,.35);margin-top:6px;}}
+#output{{margin-top:10px;display:none;}}
+#preview{{width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #6ee8aa;}}
+#b64out{{word-break:break-all;font-size:.6rem;color:rgba(255,255,255,.2);margin-top:4px;max-height:40px;overflow:hidden;}}
+</style></head><body>
+<div id="wrap">
+  <img id="src" src="data:{mime};base64,{img_b64}" draggable="false">
+  <div id="sel"></div>
+</div>
+<canvas id="cv"></canvas>
+<p class="hint">👆 Arraste para selecionar o rosto</p>
+<button class="btn" onclick="recortar()">✂️ Recortar rosto</button>
+<div id="output">
+  <p class="hint">Prévia do recorte:</p>
+  <img id="preview">
+  <div id="b64out"></div>
+</div>
+<script>
+const img=document.getElementById('src');
+const sel=document.getElementById('sel');
+let sx=0,sy=0,ex=0,ey=0,drag=false;
+
+img.addEventListener('mousedown',e=>{{
+  const r=img.getBoundingClientRect();
+  sx=e.clientX-r.left; sy=e.clientY-r.top; drag=true;
+  sel.style.display='block';
+  sel.style.left=sx+'px'; sel.style.top=sy+'px';
+  sel.style.width='0'; sel.style.height='0';
+}});
+document.addEventListener('mousemove',e=>{{
+  if(!drag) return;
+  const r=img.getBoundingClientRect();
+  ex=Math.min(Math.max(e.clientX-r.left,0),img.width);
+  ey=Math.min(Math.max(e.clientY-r.top,0),img.height);
+  sel.style.left=Math.min(sx,ex)+'px'; sel.style.top=Math.min(sy,ey)+'px';
+  sel.style.width=Math.abs(ex-sx)+'px'; sel.style.height=Math.abs(ey-sy)+'px';
+}});
+document.addEventListener('mouseup',()=>{{ drag=false; }});
+
+function recortar() {{
+  const cv=document.getElementById('cv');
+  const scaleX=img.naturalWidth/img.width;
+  const scaleY=img.naturalHeight/img.height;
+  const x=Math.min(sx,ex)*scaleX, y=Math.min(sy,ey)*scaleY;
+  const w=Math.abs(ex-sx)*scaleX, h=Math.abs(ey-sy)*scaleY;
+  if(w<10||h<10){{ alert('Selecione uma área maior!'); return; }}
+  const size=Math.max(w,h);
+  cv.width=200; cv.height=200;
+  const ctx=cv.getContext('2d');
+  ctx.beginPath(); ctx.arc(100,100,100,0,Math.PI*2); ctx.clip();
+  ctx.drawImage(img, x, y, w, h, 0, 0, 200, 200);
+  const dataURL=cv.toDataURL('image/jpeg',0.92);
+  document.getElementById('preview').src=dataURL;
+  document.getElementById('output').style.display='block';
+  document.getElementById('b64out').textContent=dataURL.substring(0,80)+'...';
+  // Envia para Streamlit via postMessage
+  window.parent.postMessage({{type:'crop_result',data:dataURL,pid:'{pessoa_crop["id"]}'}}, '*');
+}}
+</script>
+</body></html>
+            """, height=560)
+
+            st.info("Após recortar, a prévia aparece no canvas. Copie o link abaixo se precisar fazer upload manual.")
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            # Upload direto de foto já cortada (alternativa mais simples)
+            st.markdown("**Ou envie já a foto cortada:**")
+            perfil_file = st.file_uploader("Foto de perfil pronta", type=["jpg","jpeg","png","webp"], key="perfil_pronto")
+            if perfil_file:
+                st.image(perfil_file, width=100)
+                if st.button("💾 Salvar como perfil", use_container_width=True, type="primary"):
+                    with st.spinner("Enviando..."):
+                        try:
+                            perfil_file.seek(0)
+                            url_p = _upload(perfil_file.read(), perfil_file.name, "Perfis")
+                            pessoa_crop["foto_perfil"] = url_p
+                            _salvar_foto_perfil(pessoa_crop["id"], url_p)
+                            # Atualiza sessão
+                            for p in st.session_state.gal_arv:
+                                if p["id"] == pessoa_crop["id"]:
+                                    p["foto_perfil"] = url_p
+                            st.success("✅ Foto de perfil salva!")
+                            st.session_state.crop_pid = None
+                            st.rerun()
+                        except Exception as e:
+                            st.error("Erro: "+str(e))
+        with col_b:
+            if st.button("✖ Cancelar", use_container_width=True):
+                st.session_state.crop_pid = None
+                st.rerun()
+        st.divider()
+
+# ═════════════════════════════════════════════════════════════════════
+# HEADER + FILTROS
+# ═════════════════════════════════════════════════════════════════════
 st.markdown(
     '<div class="gal-header"><h1>📷 Galeria da Família</h1>'
-    '<p>Fotos antigas e suas versões restauradas</p></div>',
+    '<p>Clique em qualquer foto para abrir o viewer com zoom e comparação</p></div>',
     unsafe_allow_html=True
 )
 
-# ─────────────────────────────────────────────────────────────────────
-# Lightbox (HTML puro embutido)
-# ─────────────────────────────────────────────────────────────────────
-lb_foto = None
-if st.session_state.lb_foto_id:
-    lb_foto = next((f for f in acervo() if f["id"]==st.session_state.lb_foto_id), None)
-
-if lb_foto:
-    nomes_lb = [_nome_curto(pid) for pid in lb_foto.get("pessoas",[]) if next((p for p in arvore() if p["id"]==pid), None)]
-    tags_lb  = "".join(f"<span>{n}</span>" for n in nomes_lb)
-
-    # Gera face tags HTML
-    faces_html = ""
-    for fc in lb_foto.get("faces",[]):
-        lado = fc.get("lado","antiga")  # "antiga" ou "restaurada"
-        x, y, w, h = fc.get("x",0), fc.get("y",0), fc.get("w",10), fc.get("h",10)
-        nome = fc.get("nome","")
-        faces_html += (
-            f'<div class="face-tag" data-lado="{lado}" '
-            f'style="left:{x}%;top:{y}%;width:{w}%;height:{h}%;">'
-            f'<span class="face-label">{nome}</span></div>'
-        )
-
-    components.html(f"""
-    <style>
-    body{{margin:0;background:rgba(0,0,0,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:'DM Sans',sans-serif;}}
-    .lb-body{{display:flex;gap:2px;width:98vw;max-height:78vh;}}
-    .lb-side{{flex:1;position:relative;background:#050505;overflow:hidden;}}
-    .lb-side img{{width:100%;height:100%;object-fit:contain;display:block;}}
-    .lb-badge{{position:absolute;bottom:10px;left:10px;font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;}}
-    .badge-a{{background:rgba(200,170,100,.3);color:#e8c97a;}}
-    .badge-r{{background:rgba(100,200,150,.25);color:#6ee8aa;}}
-    .lb-info{{color:rgba(255,255,255,.75);font-size:1rem;margin:12px 0 4px;font-family:serif;font-style:italic;}}
-    .lb-pessoas span{{background:rgba(255,255,255,.09);border-radius:8px;padding:2px 9px;margin:0 3px;font-size:.78rem;color:rgba(255,255,255,.45);}}
-    .face-tag{{position:absolute;border:2px solid rgba(110,232,170,.65);border-radius:5px;cursor:default;}}
-    .face-tag:hover{{border-color:#6ee8aa;}}
-    .face-label{{position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);background:rgba(10,20,15,.95);border:1px solid rgba(110,232,170,.4);border-radius:5px;padding:2px 9px;font-size:11px;color:#6ee8aa;white-space:nowrap;opacity:0;transition:opacity .15s;pointer-events:none;}}
-    .face-tag:hover .face-label{{opacity:1;}}
-    </style>
-    <div class="lb-body">
-      <div class="lb-side" id="lado-antiga">
-        <img src="{lb_foto['antiga']}" id="img-antiga">
-        <span class="lb-badge badge-a">Foto antiga</span>
-      </div>
-      <div class="lb-side" id="lado-restaurada">
-        <img src="{lb_foto['restaurada']}" id="img-restaurada">
-        <span class="lb-badge badge-r">✨ Restaurada</span>
-      </div>
-    </div>
-    <div class="lb-info">{lb_foto.get('titulo','')}</div>
-    <div class="lb-pessoas">{tags_lb}</div>
-    <script>
-    // Injeta face tags nos lados corretos
-    const faces = {json.dumps(lb_foto.get('faces',[]))};
-    faces.forEach(fc => {{
-      const container = document.getElementById('lado-' + fc.lado);
-      if(!container) return;
-      const tag = document.createElement('div');
-      tag.className = 'face-tag';
-      tag.style.cssText = 'left:'+fc.x+'%;top:'+fc.y+'%;width:'+fc.w+'%;height:'+fc.h+'%;';
-      const label = document.createElement('span');
-      label.className = 'face-label';
-      label.textContent = fc.nome;
-      tag.appendChild(label);
-      container.appendChild(tag);
-    }});
-    </script>
-    """, height=620)
-
-    if st.button("✖ Fechar", use_container_width=True):
-        st.session_state.lb_foto_id = None
-        st.rerun()
-
-    # Marcação de rostos
-    with st.expander("🏷️ Marcar rostos nesta foto"):
-        st.caption("Informe a posição aproximada do rosto (% da imagem) e o nome da pessoa.")
-        faces_atuais = lb_foto.get("faces", [])
-
-        c1,c2,c3 = st.columns(3)
-        with c1:
-            lado_n = st.selectbox("Lado", ["antiga","restaurada"], key="face_lado")
-            nome_n = st.selectbox("Pessoa", ["(outro)"] + [p["nome"] for p in arvore()], key="face_nome_sel")
-            if nome_n == "(outro)":
-                nome_n = st.text_input("Nome manual", key="face_nome_manual")
-        with c2:
-            x_n = st.slider("← Posição horizontal (X %)", 0, 90, 30, key="face_x")
-            y_n = st.slider("↕ Posição vertical (Y %)",   0, 90, 20, key="face_y")
-        with c3:
-            w_n = st.slider("↔ Largura (%)",  3, 40, 12, key="face_w")
-            h_n = st.slider("↕ Altura (%)",   3, 50, 18, key="face_h")
-
-        col_add, col_clear = st.columns(2)
-        with col_add:
-            if st.button("➕ Adicionar marcação", use_container_width=True, type="primary", key="btn_add_face"):
-                if nome_n and nome_n != "(outro)":
-                    faces_atuais.append({"lado":lado_n,"nome":nome_n,"x":x_n,"y":y_n,"w":w_n,"h":h_n})
-                    lb_foto["faces"] = faces_atuais
-                    _salvar_faces(lb_foto["id"], faces_atuais)
-                    st.success(f"✅ {nome_n} marcado!")
-                    st.rerun()
-        with col_clear:
-            if st.button("🗑️ Limpar todos os rostos", use_container_width=True, key="btn_clear_face"):
-                lb_foto["faces"] = []
-                _salvar_faces(lb_foto["id"], [])
-                st.rerun()
-
-        if faces_atuais:
-            st.markdown("**Rostos marcados:**")
-            for i, fc in enumerate(faces_atuais):
-                colA, colB = st.columns([4,1])
-                with colA:
-                    st.markdown(f"- **{fc['nome']}** — lado: {fc['lado']} | X:{fc['x']}% Y:{fc['y']}% {fc['w']}×{fc['h']}%")
-                with colB:
-                    if st.button("✕", key=f"rm_face_{i}"):
-                        faces_atuais.pop(i)
-                        lb_foto["faces"] = faces_atuais
-                        _salvar_faces(lb_foto["id"], faces_atuais)
-                        st.rerun()
-
-    st.divider()
-
-# ─────────────────────────────────────────────────────────────────────
-# Filtros
-# ─────────────────────────────────────────────────────────────────────
 col_f1, col_f2, col_f3 = st.columns([2,2,1])
 with col_f1:
-    filtro_pessoa = st.selectbox(
-        "🔍 Filtrar por pessoa",
-        ["Todas"] + [p["nome"] for p in arvore()],
-        key="gal_filtro_pessoa"
-    )
+    filtro = st.selectbox("👤 Pessoa", ["Todas"]+[p["nome"] for p in arv()], key="gal_fil")
 with col_f2:
-    busca = st.text_input("🔎 Buscar por título", placeholder="Ex: casamento, família...", key="gal_busca", label_visibility="collapsed")
+    busca  = st.text_input("🔎 Buscar título", placeholder="nome, data, evento...", key="gal_busca", label_visibility="collapsed")
 with col_f3:
     if st.button("🔄 Atualizar", use_container_width=True):
         _carregar.clear()
-        st.session_state.gal_carregado = False
-        del st.session_state["gal_carregado"]
+        del st.session_state["gal_ok"]
         st.rerun()
 
-# Filtra
-fotos = acervo()
-if filtro_pessoa != "Todas":
-    pid_fil = next((p["id"] for p in arvore() if p["nome"]==filtro_pessoa), None)
-    if pid_fil:
-        fotos = [f for f in fotos if pid_fil in f.get("pessoas",[])]
+fotos = acv()
+if filtro != "Todas":
+    pid_f = next((p["id"] for p in arv() if p["nome"]==filtro), None)
+    fotos = [f for f in fotos if pid_f and pid_f in f.get("pessoas",[])]
 if busca.strip():
     fotos = [f for f in fotos if busca.lower() in f.get("titulo","").lower()]
 
-# ─────────────────────────────────────────────────────────────────────
-# Grid de fotos
-# ─────────────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════
+# GRID DE FOTOS
+# ═════════════════════════════════════════════════════════════════════
 if not fotos:
     st.markdown(
-        '<div style="text-align:center;padding:60px 20px;color:rgba(255,255,255,.18);">'
-        '<div style="font-size:2.5rem;opacity:.25;margin-bottom:14px">🖼️</div>'
+        '<div style="text-align:center;padding:60px;color:rgba(255,255,255,.18);">'
+        '<div style="font-size:2.5rem;margin-bottom:12px;opacity:.3">🖼️</div>'
         '<p>Nenhuma foto encontrada.</p></div>', unsafe_allow_html=True
     )
 else:
     st.caption(f"{len(fotos)} foto(s)")
-    cols_por_linha = 3
-    rows = [fotos[i:i+cols_por_linha] for i in range(0, len(fotos), cols_por_linha)]
-
-    for row in rows:
-        cols = st.columns(cols_por_linha)
-        for col, foto in zip(cols, row):
-            nomes = [_nome_curto(pid) for pid in foto.get("pessoas",[]) if next((p for p in arvore() if p["id"]==pid), None)]
+    cols_n = 3
+    for i in range(0, len(fotos), cols_n):
+        cols = st.columns(cols_n)
+        for col, foto in zip(cols, fotos[i:i+cols_n]):
+            nomes = [_nc(pid) for pid in foto.get("pessoas",[]) if next((p for p in arv() if p["id"]==pid),None)]
             tags  = "".join(f"<span>{n}</span>" for n in nomes)
-            pess_html = f'<div class="foto-card-pessoas">{tags}</div>' if tags else ""
+            pess_html = f'<div class="foto-card-pess">{tags}</div>' if tags else ""
             with col:
                 st.markdown(
                     f'<div class="foto-card">'
-                    f'<img src="{foto["antiga"]}" alt="{foto["titulo"]}">'
+                    f'<img src="{foto["antiga"]}">'
                     f'<div class="foto-card-info">'
-                    f'<div class="foto-card-titulo">{foto.get("titulo","")}</div>'
-                    f'{pess_html}'
-                    f'</div></div>',
-                    unsafe_allow_html=True
+                    f'<div class="foto-card-tit">{foto.get("titulo","") or "Sem título"}</div>'
+                    f'{pess_html}</div></div>', unsafe_allow_html=True
                 )
-                if st.button("🔍 Ver lado a lado", key="lb_"+foto["id"], use_container_width=True):
-                    st.session_state.lb_foto_id = foto["id"]
+                if st.button("🔍 Abrir viewer", key="vw_"+foto["id"], use_container_width=True):
+                    st.session_state.viewer_id = foto["id"]
                     st.rerun()
 
 st.divider()
 
-# ─────────────────────────────────────────────────────────────────────
-# Adicionar nova foto
-# ─────────────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════
+# FOTO DE PERFIL — recortar
+# ═════════════════════════════════════════════════════════════════════
+st.markdown("### 👤 Foto de perfil")
+st.caption("Selecione uma pessoa para definir ou atualizar a foto de perfil.")
+if arv():
+    cols_perf = st.columns(min(len(arv()), 5))
+    for col, p in zip(cols_perf, arv()):
+        with col:
+            url = p.get("foto_perfil","")
+            if url:
+                st.markdown(f'<img src="{url}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.2);display:block;margin:0 auto 6px;">', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.07);border:2px dashed rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:1.4rem;margin:0 auto 6px;">👤</div>', unsafe_allow_html=True)
+            st.caption(p["nome"].split()[0])
+            if st.button("✏️ Foto", key="crop_"+p["id"], use_container_width=True):
+                st.session_state.crop_pid = p["id"]
+                st.rerun()
+
+st.divider()
+
+# ═════════════════════════════════════════════════════════════════════
+# ADICIONAR NOVA FOTO
+# ═════════════════════════════════════════════════════════════════════
 with st.expander("➕ Adicionar nova foto ao acervo"):
     tit_n = st.text_input("Nome da foto", placeholder="Ex: Família reunida em 1980", key="gal_tit")
-    if arvore():
-        nomes_map = {p["nome"]: p["id"] for p in arvore()}
-        sel_pess  = st.multiselect("👥 Quem aparece nessa foto?", list(nomes_map.keys()), key="gal_pess")
+    if arv():
+        nomes_map = {p["nome"]: p["id"] for p in arv()}
+        sel_p = st.multiselect("👥 Quem aparece?", list(nomes_map.keys()), key="gal_pess")
     else:
-        sel_pess = []
-        st.info("Adicione pessoas na árvore primeiro.")
+        sel_p = []; st.info("Adicione pessoas na árvore primeiro.")
     fa_n = st.file_uploader("🕰️ Foto antiga",    type=["jpg","jpeg","png","webp"], key="gal_fa")
     fr_n = st.file_uploader("✨ Foto restaurada", type=["jpg","jpeg","png","webp"], key="gal_fr")
     if fa_n: st.image(fa_n, use_container_width=True)
     if fr_n: st.image(fr_n, use_container_width=True)
-
-    if st.button("💾 Salvar no acervo", use_container_width=True, type="primary", key="gal_btn_add"):
+    if st.button("💾 Salvar no acervo", use_container_width=True, type="primary", key="gal_btn"):
         if not fa_n or not fr_n:
             st.warning("Selecione as duas fotos.")
         else:
@@ -459,20 +565,11 @@ with st.expander("➕ Adicionar nova foto ao acervo"):
                     fa_n.seek(0); fr_n.seek(0)
                     ua = _upload(fa_n.read(), fa_n.name)
                     ur = _upload(fr_n.read(), fr_n.name)
-                    ids_sel = [nomes_map[n] for n in sel_pess] if arvore() else []
-                    nova = {
-                        "id":         "f"+str(int(time.time()*1000)),
-                        "titulo":     tit_n.strip() or "Sem título",
-                        "data":       datetime.now().strftime("%d/%m/%Y"),
-                        "antiga":     ua,
-                        "restaurada": ur,
-                        "pessoas":    ids_sel,
-                        "faces":      []
-                    }
-                    ok = _salvar_foto_sheets(nova, arvore())
-                    if ok:
-                        st.success("✅ Foto salva no acervo!")
-                        st.session_state.gal_acervo.insert(0, nova)
+                    nova = {"id":"f"+str(int(time.time()*1000)),"titulo":tit_n.strip() or "Sem título",
+                            "data":datetime.now().strftime("%d/%m/%Y"),"antiga":ua,"restaurada":ur,
+                            "pessoas":[nomes_map[n] for n in sel_p],"faces":[]}
+                    if _salvar_foto_sheets(nova, arv()):
+                        st.success("✅ Foto salva!")
+                        st.session_state.gal_acv.insert(0, nova)
                         st.rerun()
-                except Exception as e:
-                    st.error("Erro: "+str(e))
+                except Exception as e: st.error("Erro: "+str(e))
