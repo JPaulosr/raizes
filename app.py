@@ -59,25 +59,27 @@ def _s(k, d=""):
     except:
         return os.environ.get(k, d)
 
-CLOUD = _s("CLOUDINARY_CLOUD_NAME", "db8ipmete")
-AKEY  = _s("CLOUDINARY_API_KEY")
-ASEC  = _s("CLOUDINARY_API_SECRET")
-
 def _upload(fb, fname, folder="Raizes"):
+    # Lê sempre na hora para pegar secrets atualizados
+    cloud = _s("CLOUDINARY_CLOUD_NAME", "db8ipmete")
+    akey  = _s("CLOUDINARY_API_KEY")
+    asec  = _s("CLOUDINARY_API_SECRET")
+    if not akey:
+        raise ValueError("CLOUDINARY_API_KEY nao configurada nos Secrets do Streamlit.")
     ts  = str(int(time.time()))
     pid = folder + "/" + Path(fname).stem + "_" + ts
-    sig = hashlib.sha1(("folder="+folder+"&public_id="+pid+"&timestamp="+ts+ASEC).encode()).hexdigest()
+    sig = hashlib.sha1(("folder="+folder+"&public_id="+pid+"&timestamp="+ts+asec).encode()).hexdigest()
     b   = "----B" + ts
     body = ("--"+b+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\""+fname+"\"\r\nContent-Type: image/jpeg\r\n\r\n").encode()
     body += fb
-    body += ("\r\n--"+b+"\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\n"+AKEY+"\r\n"
+    body += ("\r\n--"+b+"\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\n"+akey+"\r\n"
              "--"+b+"\r\nContent-Disposition: form-data; name=\"timestamp\"\r\n\r\n"+ts+"\r\n"
              "--"+b+"\r\nContent-Disposition: form-data; name=\"folder\"\r\n\r\n"+folder+"\r\n"
              "--"+b+"\r\nContent-Disposition: form-data; name=\"public_id\"\r\n\r\n"+pid+"\r\n"
              "--"+b+"\r\nContent-Disposition: form-data; name=\"signature\"\r\n\r\n"+sig+"\r\n"
              "--"+b+"--\r\n").encode()
     req = urllib.request.Request(
-        "https://api.cloudinary.com/v1_1/"+CLOUD+"/image/upload",
+        "https://api.cloudinary.com/v1_1/"+cloud+"/image/upload",
         data=body, headers={"Content-Type": "multipart/form-data; boundary="+b}
     )
     with urllib.request.urlopen(req, timeout=40) as r:
@@ -493,7 +495,7 @@ with tab_arv:
                         st.warning("Digite o nome.")
                     else:
                         url_p = ""
-                        if fp_f and AKEY:
+                        if fp_f and _s("CLOUDINARY_API_KEY"):
                             with st.spinner("Enviando foto..."):
                                 try:
                                     fp_f.seek(0)
@@ -599,8 +601,6 @@ with tab_arv:
                 if st.button("💾 Salvar foto", use_container_width=True, type="primary", key="btn_foto_"+pessoa["id"]):
                     if not fa or not fr:
                         st.warning("Selecione as duas fotos.")
-                    elif not AKEY:
-                        st.error("Configure CLOUDINARY_API_KEY nos Secrets.")
                     else:
                         with st.spinner("Enviando fotos..."):
                             try:
@@ -692,8 +692,6 @@ with tab_acervo:
         if st.button("💾 Salvar no acervo", use_container_width=True, type="primary", key="btn_acervo_add"):
             if not fa_a or not fr_a:
                 st.warning("Selecione as duas fotos.")
-            elif not AKEY:
-                st.error("Configure CLOUDINARY_API_KEY nos Secrets.")
             else:
                 with st.spinner("Enviando fotos..."):
                     try:
