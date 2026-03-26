@@ -53,17 +53,30 @@ st.markdown(CSS, unsafe_allow_html=True)
 # Cloudinary
 # ─────────────────────────────────────────────────────────────────────
 def _s(k, d=""):
-    # Acesso direto (mais confiavel no Streamlit Cloud)
+    # 1) Chave direta: CLOUDINARY_API_KEY
     try:
         v = st.secrets[k]
         return str(v).strip() if v else d
-    except:
-        pass
+    except: pass
+    # 2) Secao aninhada: [CLOUDINARY] api_key  ou  [GCP_SERVICE_ACCOUNT] etc
+    # Tenta mapear chaves conhecidas para secoes
+    _MAP = {
+        "CLOUDINARY_API_KEY":    ("CLOUDINARY", "api_key"),
+        "CLOUDINARY_API_SECRET": ("CLOUDINARY", "api_secret"),
+        "CLOUDINARY_CLOUD_NAME": ("CLOUDINARY", "cloud_name"),
+    }
+    if k in _MAP:
+        sec, sub = _MAP[k]
+        try:
+            v = st.secrets[sec][sub]
+            return str(v).strip() if v else d
+        except: pass
+    # 3) .get() fallback
     try:
         v = st.secrets.get(k, d)
         return str(v).strip() if v else d
-    except:
-        pass
+    except: pass
+    # 4) Variavel de ambiente
     return os.environ.get(k, d)
 
 def _upload(fb, fname, folder="Raizes"):
