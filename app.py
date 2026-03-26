@@ -157,7 +157,7 @@ def _get_ws():
 # Colunas da aba Pessoas
 _COLS_P = ["id","nome","relacao","genero","nascimento","falecimento",
            "foto_perfil","conjuge_id","conjuge_nome","pai_id","pai_nome",
-           "mae_id","mae_nome","foto_ids"]
+           "mae_id","mae_nome","irmao_de_id","irmao_de_nome","foto_ids"]
 
 # Colunas da aba Fotos
 _COLS_F = ["id","titulo","data","antiga","restaurada","pessoas_ids","pessoas_nomes"]
@@ -205,6 +205,7 @@ def _carregar():
                 "conjuge_id":  str(r.get("conjuge_id","")),
                 "pai_id":      str(r.get("pai_id","")),
                 "mae_id":      str(r.get("mae_id","")),
+                "irmao_de_id": str(r.get("irmao_de_id","")),
                 "foto_ids":    [],
             }
             arvore.append(p)
@@ -258,6 +259,8 @@ def _salvar(arvore, acervo):
                 _nome_da_pessoa(p.get("pai_id",""), arvore),
                 p.get("mae_id",""),
                 _nome_da_pessoa(p.get("mae_id",""), arvore),
+                p.get("irmao_de_id",""),
+                _nome_da_pessoa(p.get("irmao_de_id",""), arvore),
                 ",".join(p.get("foto_ids",[])),
             ])
         ws_p.clear()
@@ -312,7 +315,9 @@ def salvar_tudo():
 NIVEL = {
     "Bisavô":0,"Bisavó":0,
     "Avô (paterno)":1,"Avó (paterna)":1,"Avô (materno)":1,"Avó (materna)":1,
-    "Pai":2,"Mãe":2,"Tio":2,"Tia":2,
+    "Pai":2,"Mãe":2,
+    "Tio (materno)":2,"Tia (materna)":2,"Tio (paterno)":2,"Tia (paterna)":2,
+    "Tio":2,"Tia":2,
     "Eu":3,"Cônjuge":3,"Irmão":3,"Irmã":3,"Primo":3,"Prima":3,
     "Filho":4,"Filha":4,"Sobrinho":4,"Sobrinha":4,"Outro":3
 }
@@ -320,7 +325,10 @@ EMOJIS = {
     "Pai":"👨","Mãe":"👩","Avô (paterno)":"👴","Avó (paterna)":"👵",
     "Avô (materno)":"👴","Avó (materna)":"👵","Bisavô":"🧓","Bisavó":"👵",
     "Eu":"🧑","Cônjuge":"💑","Irmão":"👦","Irmã":"👧",
-    "Filho":"👦","Filha":"👧","Prima":"👩","Primo":"👦","Tia":"👩","Tio":"👨"
+    "Filho":"👦","Filha":"👧","Prima":"👩","Primo":"👦",
+    "Tia":"👩","Tio":"👨",
+    "Tio (materno)":"👨","Tia (materna)":"👩",
+    "Tio (paterno)":"👨","Tia (paterna)":"👩",
 }
 
 def _nivel(p):    return NIVEL.get(p.get("relacao","Outro"), 3)
@@ -350,6 +358,8 @@ def _node_html(p, ativo=False):
         tags += f'<span class="rel-tag">👨 {_nome_curto(p["pai_id"])}</span>'
     if p.get("mae_id"):
         tags += f'<span class="rel-tag">👩 {_nome_curto(p["mae_id"])}</span>'
+    if p.get("irmao_de_id"):
+        tags += f'<span class="rel-tag">👫 irmão(ã) de {_nome_curto(p["irmao_de_id"])}</span>'
     cls = "node-card ativo" if ativo else "node-card"
     return (f'<div class="{cls}">{badge}{_avatar_html(p)}'
             f'<div class="node-nome">{p["nome"].split()[0]}</div>'
@@ -512,9 +522,12 @@ with tab_arv:
             st.markdown("**Vínculos familiares**")
             nomes_map = {p["nome"]: p["id"] for p in arvore}
             opcoes    = ["(nenhum)"] + list(nomes_map.keys())
-            conjuge_s = st.selectbox("💍 Cônjuge", opcoes, key="add_conjuge")
-            pai_s     = st.selectbox("👨 Pai",     opcoes, key="add_pai")
-            mae_s     = st.selectbox("👩 Mãe",     opcoes, key="add_mae")
+            conjuge_s  = st.selectbox("💍 Cônjuge",    opcoes, key="add_conjuge")
+            pai_s      = st.selectbox("👨 Pai",         opcoes, key="add_pai")
+            mae_s      = st.selectbox("👩 Mãe",         opcoes, key="add_mae")
+            irmao_de_s = st.selectbox("👫 Irmão/Irmã de (pessoa da família que é irmã)",
+                                       opcoes, key="add_irmao_de",
+                                       help="Ex: se é Tio materno, selecione a Mãe aqui")
 
             st.caption("Foto de perfil (opcional)")
             fp_f = st.file_uploader("", type=["jpg","jpeg","png","webp"], key="add_fp", label_visibility="collapsed")
@@ -536,17 +549,18 @@ with tab_arv:
                                     st.error("Erro foto perfil: "+str(e))
                         nova_id = "p" + str(int(time.time()*1000))
                         nova = {
-                            "id":          nova_id,
-                            "nome":        nome_n.strip(),
-                            "relacao":     rel_n,
-                            "genero":      "F" if gen_n=="Feminino" else "M",
-                            "nascimento":  nasc_n.strip(),
-                            "falecimento": falec_n.strip(),
-                            "foto_perfil": url_p,
-                            "conjuge_id":  nomes_map.get(conjuge_s, ""),
-                            "pai_id":      nomes_map.get(pai_s,    ""),
-                            "mae_id":      nomes_map.get(mae_s,    ""),
-                            "foto_ids":    []
+                            "id":           nova_id,
+                            "nome":         nome_n.strip(),
+                            "relacao":      rel_n,
+                            "genero":       "F" if gen_n=="Feminino" else "M",
+                            "nascimento":   nasc_n.strip(),
+                            "falecimento":  falec_n.strip(),
+                            "foto_perfil":  url_p,
+                            "conjuge_id":   nomes_map.get(conjuge_s,  ""),
+                            "pai_id":       nomes_map.get(pai_s,      ""),
+                            "mae_id":       nomes_map.get(mae_s,      ""),
+                            "irmao_de_id":  nomes_map.get(irmao_de_s, ""),
+                            "foto_ids":     []
                         }
                         st.session_state.arvore.append(nova)
                         # atualizar cônjuge reciprocamente
@@ -578,9 +592,10 @@ with tab_arv:
             info = ""
             if pessoa.get("nascimento"):  info += f"📅 {pessoa['nascimento']}<br>"
             if pessoa.get("falecimento"): info += f"✝️ {pessoa['falecimento']}<br>"
-            if pessoa.get("conjuge_id"):  info += f"💍 Casado(a) com {_nome_curto(pessoa['conjuge_id'])}<br>"
-            if pessoa.get("pai_id"):      info += f"👨 Pai: {_nome_curto(pessoa['pai_id'])}<br>"
-            if pessoa.get("mae_id"):      info += f"👩 Mãe: {_nome_curto(pessoa['mae_id'])}<br>"
+            if pessoa.get("conjuge_id"):   info += f"💍 Casado(a) com {_nome_curto(pessoa['conjuge_id'])}<br>"
+            if pessoa.get("pai_id"):       info += f"👨 Pai: {_nome_curto(pessoa['pai_id'])}<br>"
+            if pessoa.get("mae_id"):       info += f"👩 Mãe: {_nome_curto(pessoa['mae_id'])}<br>"
+            if pessoa.get("irmao_de_id"):  info += f"👫 Irmão(ã) de: {_nome_curto(pessoa['irmao_de_id'])}<br>"
             filhos = [p for p in st.session_state.arvore
                       if p.get("pai_id")==pessoa["id"] or p.get("mae_id")==pessoa["id"]]
             if filhos:
@@ -670,18 +685,21 @@ with tab_arv:
                     nome_v = next((p["nome"] for p in st.session_state.arvore if p["id"]==val_id), None)
                     return opc2.index(nome_v) if nome_v and nome_v in opc2 else 0
 
-                conj_e = st.selectbox("💍 Cônjuge", opc2, index=_idx2(pessoa.get("conjuge_id","")), key="ed_conj_"+pessoa["id"])
-                pai_e  = st.selectbox("👨 Pai",     opc2, index=_idx2(pessoa.get("pai_id","")),     key="ed_pai_"+pessoa["id"])
-                mae_e  = st.selectbox("👩 Mãe",     opc2, index=_idx2(pessoa.get("mae_id","")),     key="ed_mae_"+pessoa["id"])
+                conj_e    = st.selectbox("💍 Cônjuge",     opc2, index=_idx2(pessoa.get("conjuge_id","")),  key="ed_conj_"+pessoa["id"])
+                pai_e     = st.selectbox("👨 Pai",         opc2, index=_idx2(pessoa.get("pai_id","")),      key="ed_pai_"+pessoa["id"])
+                mae_e     = st.selectbox("👩 Mãe",         opc2, index=_idx2(pessoa.get("mae_id","")),      key="ed_mae_"+pessoa["id"])
+                irmao_e   = st.selectbox("👫 Irmão/Irmã de", opc2, index=_idx2(pessoa.get("irmao_de_id","")), key="ed_irmao_"+pessoa["id"],
+                                          help="Selecione um familiar que é irmão(ã) desta pessoa")
 
                 if st.button("💾 Salvar edições", use_container_width=True, type="primary", key="btn_ed_"+pessoa["id"]):
                     pessoa["nome"]        = nome_e.strip()
                     pessoa["relacao"]     = rel_e
                     pessoa["nascimento"]  = nasc_e.strip()
                     pessoa["falecimento"] = falec_e.strip()
-                    pessoa["conjuge_id"]  = nomes2.get(conj_e, "")
-                    pessoa["pai_id"]      = nomes2.get(pai_e,  "")
-                    pessoa["mae_id"]      = nomes2.get(mae_e,  "")
+                    pessoa["conjuge_id"]   = nomes2.get(conj_e,  "")
+                    pessoa["pai_id"]       = nomes2.get(pai_e,   "")
+                    pessoa["mae_id"]       = nomes2.get(mae_e,   "")
+                    pessoa["irmao_de_id"]  = nomes2.get(irmao_e, "")
                     salvar_tudo()
                     st.rerun()
 
