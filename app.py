@@ -210,9 +210,9 @@ CLOUD_NAME = _get_secret("CLOUDINARY_CLOUD_NAME","db8ipmete")
 API_KEY    = _get_secret("CLOUDINARY_API_KEY")
 API_SECRET = _get_secret("CLOUDINARY_API_SECRET")
 
-def _upload_cloudinary(file_bytes, filename, folder="arvore_genealogica"):
+def _upload_cloudinary(file_bytes, filename, folder="Fotos antigas"):
     ts        = str(int(time.time()))
-    public_id = f"{folder}/{Path(filename).stem}_{ts}"
+    public_id = f"Fotos antigas/{Path(filename).stem}_{ts}"
     params    = f"folder={folder}&public_id={public_id}&timestamp={ts}"
     signature = hashlib.sha1(f"{params}{API_SECRET}".encode()).hexdigest()
     boundary  = "----Boundary" + ts
