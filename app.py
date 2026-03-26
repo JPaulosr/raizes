@@ -98,10 +98,32 @@ def _gc():
     )
     return gspread.authorize(creds)
 
+def _extrair_key(url_ou_key):
+    import re
+    if not url_ou_key:
+        raise ValueError("PLANILHA_URL_RAIZES nao configurada nos Secrets.")
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url_ou_key)
+    if m:
+        return m.group(1)
+    if "/" not in url_ou_key:
+        return url_ou_key
+    raise ValueError(f"Nao consegui extrair ID da planilha de: {url_ou_key!r}")
+
 def _get_ws():
-    url = _s("PLANILHA_URL_RAIZES") or _s("PLANILHA_URL")
-    gc  = _gc()
-    sh  = gc.open_by_url(url) if url.startswith("http") else gc.open_by_key(url)
+    url_cfg = _s("PLANILHA_URL_RAIZES") or _s("PLANILHA_URL")
+    gc      = _gc()
+    try:
+        key = _extrair_key(url_cfg)
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    try:
+        sh = gc.open_by_key(key)
+    except Exception as e:
+        raise RuntimeError(
+            f"Erro ao abrir planilha (key={key!r}). "
+            f"Verifique se ela existe e esta compartilhada com a conta de servico. "
+            f"Detalhe: {e}"
+        )
     try:
         return sh.worksheet("Raizes_Arvore")
     except:
@@ -255,8 +277,39 @@ tab_arv, tab_acervo, tab_debug = st.tabs(["🌳 Árvore", "📷 Acervo de Fotos"
 # ═══════════════════════════════════════════════════════════════════════
 with tab_debug:
     st.markdown("### Diagnóstico da Base de Dados")
-    st.caption("Use esta aba para verificar se os dados estão sendo salvos no Google Sheets.")
 
+    # Testa conexão com Google Sheets ao vivo
+    st.markdown("#### Teste de conexão")
+    url_cfg = _s("PLANILHA_URL_RAIZES") or _s("PLANILHA_URL")
+    if not url_cfg:
+        st.error("❌ **PLANILHA_URL_RAIZES** não encontrada nos Secrets. Adicione a URL da planilha.")
+    else:
+        st.code(f"URL configurada: {url_cfg}", language=None)
+        try:
+            import re
+            m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url_cfg)
+            key = m.group(1) if m else url_cfg
+            st.code(f"ID extraído: {key}", language=None)
+        except:
+            pass
+
+        if st.button("🔌 Testar conexão agora", use_container_width=True):
+            try:
+                ws = _get_ws()
+                st.success(f"✅ Conectado! Aba: {ws.title}")
+            except Exception as e:
+                st.error(f"❌ Falha na conexão: {e}")
+                st.markdown("""
+**Causas comuns do erro 404:**
+1. A planilha não foi compartilhada com o e-mail da conta de serviço ( no JSON do GCP_SERVICE_ACCOUNT)
+2. O ID da planilha na URL está errado
+3. A planilha foi deletada ou movida
+
+**Como resolver:**  
+Abra a planilha no Google Sheets → Compartilhar → adicione o  com permissão de **Editor**.
+""")
+
+    st.divider()
     c1, c2 = st.columns(2)
     with c1:
         if st.button("🔄 Recarregar do banco", use_container_width=True):
@@ -271,7 +324,7 @@ with tab_debug:
     st.markdown(f"**Na memória:** {len(st.session_state.arvore)} pessoas · {len(st.session_state.acervo)} fotos")
 
     if st.session_state.arvore:
-        st.markdown("**Pessoas:**")
+        st.markdown("**Pessoas cadastradas:**")
         for p in st.session_state.arvore:
             conj = f" | 💍 {_nome_curto(p['conjuge_id'])}" if p.get("conjuge_id") else ""
             pai  = f" | 👨 {_nome_curto(p['pai_id'])}"     if p.get("pai_id")     else ""
