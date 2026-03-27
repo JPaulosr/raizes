@@ -295,11 +295,27 @@ def _salvar(arvore, acervo):
 # ─────────────────────────────────────────────────────────────────────
 # Session State
 # ─────────────────────────────────────────────────────────────────────
-if "carregado" not in st.session_state:
+if "arvore" not in st.session_state:
     arv, acv = _carregar()
-    st.session_state.arvore    = arv
-    st.session_state.acervo    = acv
-    st.session_state.carregado = True
+    st.session_state.arvore       = arv
+    st.session_state.acervo       = acv
+    st.session_state.last_load_ts = time.time()
+
+# Recarrega foto_perfil do banco se passou mais de 30s (para pegar mudanças da Galeria)
+elif time.time() - st.session_state.get("last_load_ts", 0) > 30:
+    try:
+        sh     = _get_planilha()
+        ws_p   = _get_aba(sh, "Pessoas", _COLS_P)
+        rows_p = ws_p.get_all_records(expected_headers=_COLS_P)
+        for r in rows_p:
+            pid = str(r.get("id",""))
+            url = str(r.get("foto_perfil",""))
+            for p in st.session_state.arvore:
+                if p["id"] == pid and p.get("foto_perfil","") != url:
+                    p["foto_perfil"] = url
+        st.session_state.last_load_ts = time.time()
+    except:
+        pass
 
 if "ativo" not in st.session_state: st.session_state.ativo = None
 if "modo"  not in st.session_state: st.session_state.modo  = "ver"
