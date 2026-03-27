@@ -590,14 +590,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Diagnóstico inline — mostra quantas pessoas/fotos foram carregadas
-with st.expander("🔧 Diagnóstico — ver dados carregados"):
-    st.markdown(f"**Pessoas carregadas:** {len(st.session_state.gal_arv)}")
-    for p in st.session_state.gal_arv:
-        st.markdown(f"- `{p['id']}` — **{p['nome']}** ({p.get('relacao','')})")
-    st.markdown(f"**Fotos carregadas:** {len(st.session_state.gal_acv)}")
-    if st.button("🔄 Forçar recarregar agora", use_container_width=True, key="force_reload"):
-        st.rerun()
 
 col_f1, col_f2, col_f3 = st.columns([2,2,1])
 with col_f1:
