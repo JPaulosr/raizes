@@ -66,7 +66,6 @@ _COLS_P = ["id","nome","relacao","genero","nascimento","falecimento","foto_perfi
            "irmao_de_id","irmao_de_nome","foto_ids"]
 _COLS_F = ["id","titulo","data","antiga","restaurada","pessoas_ids","pessoas_nomes"]
 
-@st.cache_data(ttl=30, show_spinner=False)
 def _carregar():
     try:
         sh = _get_sh()
@@ -149,13 +148,12 @@ def _upload(fb, fname, folder="Raizes"):
     with urllib.request.urlopen(req,timeout=40) as r: return json.loads(r.read())["secure_url"]
 
 # ── Session state ─────────────────────────────────────────────────────
-if "gal_ok" not in st.session_state:
-    arv,acv = _carregar()
-    st.session_state.gal_arv = arv
-    st.session_state.gal_acv = acv
-    st.session_state.gal_ok  = True
-if "viewer_id"   not in st.session_state: st.session_state.viewer_id   = None
-if "crop_pid"    not in st.session_state: st.session_state.crop_pid    = None
+# Sempre recarrega do banco para pegar pessoas novas
+arv_data, acv_data = _carregar()
+st.session_state.gal_arv = arv_data
+st.session_state.gal_acv = acv_data
+if "viewer_id" not in st.session_state: st.session_state.viewer_id = None
+if "crop_pid"  not in st.session_state: st.session_state.crop_pid  = None
 
 def arv(): return st.session_state.gal_arv
 def acv(): return st.session_state.gal_acv
@@ -573,8 +571,6 @@ with col_f2:
     busca  = st.text_input("🔎 Buscar título", placeholder="nome, data, evento...", key="gal_busca", label_visibility="collapsed")
 with col_f3:
     if st.button("🔄 Atualizar", use_container_width=True):
-        _carregar.clear()
-        del st.session_state["gal_ok"]
         st.rerun()
 
 fotos = acv()
