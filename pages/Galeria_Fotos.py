@@ -45,7 +45,6 @@ def _s(k, d=""):
 import gspread
 from google.oauth2.service_account import Credentials
 
-@st.cache_resource
 def _gc():
     creds = Credentials.from_service_account_info(
         dict(st.secrets["GCP_SERVICE_ACCOUNT"]),
@@ -130,7 +129,7 @@ def _salvar_titulo(foto_id, titulo):
         for i,row in enumerate(rows[1:],start=2):
             if row and row[0]==foto_id:
                 ws.update_cell(i, col, titulo)
-                _carregar.clear(); return
+                return
     except Exception as e: st.error("Erro: "+str(e))
 
 def _salvar_foto_perfil(pessoa_id, url):
@@ -143,7 +142,7 @@ def _salvar_foto_perfil(pessoa_id, url):
         for i,row in enumerate(rows[1:],start=2):
             if row and row[0]==pessoa_id:
                 ws.update_cell(i, col, url)
-                _carregar.clear(); return
+                return
     except Exception as e: st.error("Erro: "+str(e))
 
 def _salvar_foto_sheets(nova, arvore):
@@ -152,7 +151,7 @@ def _salvar_foto_sheets(nova, arvore):
         ids_str   = ",".join(nova.get("pessoas",[]))
         nomes_str = ",".join(next((p["nome"] for p in arvore if p["id"]==pid),"") for pid in nova.get("pessoas",[]))
         ws.append_row([nova["id"],nova["titulo"],nova["data"],nova["antiga"],nova["restaurada"],ids_str,nomes_str,"[]"])
-        _carregar.clear(); return True
+        return True
     except Exception as e: st.error("Erro: "+str(e)); return False
 
 # ── Cloudinary ────────────────────────────────────────────────────────
@@ -590,6 +589,15 @@ st.markdown(
     '<p>Clique em qualquer foto para abrir o viewer com zoom e comparação</p></div>',
     unsafe_allow_html=True
 )
+
+# Diagnóstico inline — mostra quantas pessoas/fotos foram carregadas
+with st.expander("🔧 Diagnóstico — ver dados carregados"):
+    st.markdown(f"**Pessoas carregadas:** {len(st.session_state.gal_arv)}")
+    for p in st.session_state.gal_arv:
+        st.markdown(f"- `{p['id']}` — **{p['nome']}** ({p.get('relacao','')})")
+    st.markdown(f"**Fotos carregadas:** {len(st.session_state.gal_acv)}")
+    if st.button("🔄 Forçar recarregar agora", use_container_width=True, key="force_reload"):
+        st.rerun()
 
 col_f1, col_f2, col_f3 = st.columns([2,2,1])
 with col_f1:
