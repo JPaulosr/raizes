@@ -354,9 +354,20 @@ if st.session_state.crop_pid:
         # Fotos do acervo onde esta pessoa aparece
         fotos_da_pessoa = [f for f in acv() if pessoa_crop["id"] in f.get("pessoas",[])]
 
+        # ── Opção 1: Cloudinary g_face — recorte automático por IA ─────────
+        def _cloudinary_face_url(url_original):
+            """Transforma URL do Cloudinary para recortar automaticamente no rosto."""
+            import re
+            # Ex: https://res.cloudinary.com/CLOUD/image/upload/Raizes/foto_123.jpg
+            # Vira: https://res.cloudinary.com/CLOUD/image/upload/g_face,c_thumb,w_200,h_200,r_max/Raizes/foto_123.jpg
+            m = re.match(r"(https://res\.cloudinary\.com/[^/]+/image/upload/)(.+)", url_original)
+            if m:
+                return m.group(1) + "g_face,c_thumb,w_200,h_200,r_max/" + m.group(2)
+            return None
+
         # Selecionar qual foto usar como base
         if fotos_da_pessoa:
-            st.markdown("**Escolha uma foto do acervo para recortar o rosto:**")
+            st.markdown("**Escolha uma foto do acervo:**")
             opcoes_foto = {"(nenhuma — enviar do computador)": None}
             for f in fotos_da_pessoa:
                 tit = f.get("titulo","") or "Sem título"
@@ -367,11 +378,49 @@ if st.session_state.crop_pid:
             st.caption(f"{nome_c} ainda não tem fotos no acervo. Envie uma abaixo.")
             foto_escolhida = None
 
-        # Determina a URL base para recorte
-        url_para_recortar = None
+        # ── Recorte automático por IA do Cloudinary ───────────────────
         if foto_escolhida:
             lado = st.radio("Qual versão usar?", ["Restaurada ✨","Antiga 🕰️"], horizontal=True, key="crop_lado")
-            url_para_recortar = foto_escolhida["restaurada"] if "Restaurada" in lado else foto_escolhida["antiga"]
+            url_base = foto_escolhida["restaurada"] if "Restaurada" in lado else foto_escolhida["antiga"]
+            face_url = _cloudinary_face_url(url_base)
+
+            if face_url:
+                st.markdown("#### 🤖 Recorte automático (IA do Cloudinary)")
+                st.caption("O Cloudinary detecta o rosto principal automaticamente.")
+                col_ai1, col_ai2 = st.columns([1,3])
+                with col_ai1:
+                    ai_html = f'<div><img src="{face_url}" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid #6ee8aa;display:block;"><p style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:4px;">Prévia circular</p></div>'
+                    st.markdown(ai_html, unsafe_allow_html=True)
+                with col_ai2:
+                    st.markdown(f"**Prévia do recorte automático**")
+                    st.caption("Se o rosto aparecer bem recortado ao lado, clique para salvar!")
+                    if st.button("✅ Salvar este recorte como perfil", use_container_width=True,
+                                 type="primary", key="sv_ai_"+pessoa_crop["id"]):
+                        with st.spinner("Salvando..."):
+                            try:
+                                # Baixa a imagem já recortada do Cloudinary e faz upload como perfil
+                                import urllib.request as ur
+                                with ur.urlopen(face_url, timeout=15) as resp:
+                                    img_data = resp.read()
+                                url_p = _upload(img_data, f"perfil_{nome_c}.jpg", "Perfis")
+                                pessoa_crop["foto_perfil"] = url_p
+                                _salvar_foto_perfil(pessoa_crop["id"], url_p)
+                                for p in st.session_state.gal_arv:
+                                    if p["id"] == pessoa_crop["id"]:
+                                        p["foto_perfil"] = url_p
+                                st.success(f"✅ Foto de perfil de {nome_c} salva!")
+                                st.session_state.crop_pid = None
+                                st.rerun()
+                            except Exception as e:
+                                st.error("Erro: "+str(e))
+
+                st.markdown("---")
+                st.markdown("#### ✂️ Ou recorte manualmente:")
+
+        # Determina a URL base para recorte manual
+        url_para_recortar = None
+        if foto_escolhida:
+            url_para_recortar = foto_escolhida["restaurada"] if "Restaurada" in (lado if foto_escolhida else "") else (foto_escolhida["antiga"] if foto_escolhida else None)
 
         # Também pode enviar foto do computador
         if not foto_escolhida or st.checkbox("Ou enviar uma foto diferente do computador", key="crop_upload_check"):
