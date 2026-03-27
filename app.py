@@ -186,47 +186,50 @@ def _get_planilha():
 
 def _carregar():
     try:
-        sh      = _get_planilha()
-        ws_p    = _get_aba(sh, "Pessoas",  _COLS_P)
-        ws_f    = _get_aba(sh, "Fotos",    _COLS_F)
+        sh   = _get_planilha()
+        ws_p = _get_aba(sh, "Pessoas", _COLS_P)
+        ws_f = _get_aba(sh, "Fotos",   _COLS_F)
 
-        # --- Pessoas ---
-        rows_p  = ws_p.get_all_records(expected_headers=_COLS_P)
-        arvore  = []
-        for r in rows_p:
-            if not r.get("id") or not r.get("nome"): continue
-            p = {
-                "id":          str(r.get("id","")),
-                "nome":        str(r.get("nome","")),
-                "relacao":     str(r.get("relacao","")),
-                "genero":      str(r.get("genero","")),
-                "nascimento":  str(r.get("nascimento","")),
-                "falecimento": str(r.get("falecimento","")),
-                "foto_perfil": str(r.get("foto_perfil","")),
-                "conjuge_id":  str(r.get("conjuge_id","")),
-                "pai_id":      str(r.get("pai_id","")),
-                "mae_id":      str(r.get("mae_id","")),
-                "irmao_de_id": str(r.get("irmao_de_id","")),
-                "foto_ids":    [],
-            }
-            arvore.append(p)
+        # --- Pessoas (tolerante a colunas faltando) ---
+        all_p  = ws_p.get_all_values()
+        arvore = []
+        if all_p:
+            hdr = all_p[0]
+            for row in all_p[1:]:
+                r = {hdr[i]: row[i] if i < len(row) else "" for i in range(len(hdr))}
+                if not r.get("id") or not r.get("nome"): continue
+                arvore.append({
+                    "id":          str(r.get("id","")),
+                    "nome":        str(r.get("nome","")),
+                    "relacao":     str(r.get("relacao","")),
+                    "genero":      str(r.get("genero","")),
+                    "nascimento":  str(r.get("nascimento","")),
+                    "falecimento": str(r.get("falecimento","")),
+                    "foto_perfil": str(r.get("foto_perfil","")),
+                    "conjuge_id":  str(r.get("conjuge_id","")),
+                    "pai_id":      str(r.get("pai_id","")),
+                    "mae_id":      str(r.get("mae_id","")),
+                    "irmao_de_id": str(r.get("irmao_de_id","")),
+                    "foto_ids":    [],
+                })
 
-        # --- Fotos ---
-        rows_f  = ws_f.get_all_records(expected_headers=_COLS_F)
-        acervo  = []
-        for r in rows_f:
-            if not r.get("id") or not r.get("antiga"): continue
-            ids_str = str(r.get("pessoas_ids",""))
-            pessoas = [x.strip() for x in ids_str.split(",") if x.strip()]
-            f = {
-                "id":          str(r.get("id","")),
-                "titulo":      str(r.get("titulo","")),
-                "data":        str(r.get("data","")),
-                "antiga":      str(r.get("antiga","")),
-                "restaurada":  str(r.get("restaurada","")),
-                "pessoas":     pessoas,
-            }
-            acervo.append(f)
+        # --- Fotos (tolerante a colunas faltando) ---
+        all_f  = ws_f.get_all_values()
+        acervo = []
+        if all_f:
+            hdr_f = all_f[0]
+            for row in all_f[1:]:
+                r = {hdr_f[i]: row[i] if i < len(row) else "" for i in range(len(hdr_f))}
+                if not r.get("id") or not r.get("antiga"): continue
+                ids_str = str(r.get("pessoas_ids",""))
+                acervo.append({
+                    "id":         str(r.get("id","")),
+                    "titulo":     str(r.get("titulo","")),
+                    "data":       str(r.get("data","")),
+                    "antiga":     str(r.get("antiga","")),
+                    "restaurada": str(r.get("restaurada","")),
+                    "pessoas":    [x.strip() for x in ids_str.split(",") if x.strip()],
+                })
 
         return arvore, acervo
     except Exception as e:
