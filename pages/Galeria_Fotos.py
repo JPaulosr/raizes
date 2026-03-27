@@ -653,18 +653,22 @@ st.divider()
 st.markdown("### 👤 Foto de perfil")
 st.caption("Selecione uma pessoa para definir ou atualizar a foto de perfil.")
 if arv():
-    cols_perf = st.columns(min(len(arv()), 5))
-    for col, p in zip(cols_perf, arv()):
-        with col:
-            url = p.get("foto_perfil","")
-            if url:
-                st.markdown(f'<img src="{url}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.2);display:block;margin:0 auto 6px;">', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.07);border:2px dashed rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:1.4rem;margin:0 auto 6px;">👤</div>', unsafe_allow_html=True)
-            st.caption(p["nome"].split()[0])
-            if st.button("✏️ Foto", key="crop_"+p["id"], use_container_width=True):
-                st.session_state.crop_pid = p["id"]
-                st.rerun()
+    pessoas_all = arv()
+    por_linha = 5
+    for i in range(0, len(pessoas_all), por_linha):
+        grupo = pessoas_all[i:i+por_linha]
+        cols_perf = st.columns(por_linha)
+        for col, p in zip(cols_perf, grupo):
+            with col:
+                url = p.get("foto_perfil","")
+                if url:
+                    st.markdown(f'<img src="{url}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.2);display:block;margin:0 auto 6px;">', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.07);border:2px dashed rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:1.4rem;margin:0 auto 6px;">👤</div>', unsafe_allow_html=True)
+                st.caption(p["nome"].split()[0])
+                if st.button("✏️ Foto", key="crop_"+p["id"], use_container_width=True):
+                    st.session_state.crop_pid = p["id"]
+                    st.rerun()
 
 st.divider()
 
